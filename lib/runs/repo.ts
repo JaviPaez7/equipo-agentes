@@ -155,6 +155,7 @@ export async function getFileSummaries(runId: string) {
     path: row.path,
     bytes: Buffer.byteLength(row.content, "utf8"),
     updatedBy: row.updatedBy,
+    updatedAt: row.updatedAt,
     change: (row.originalContent === null
       ? "new"
       : row.originalContent === row.content

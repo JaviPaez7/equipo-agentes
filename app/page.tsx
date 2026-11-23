@@ -26,21 +26,19 @@ const FLOW = [
 export default function Home() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <section className="max-w-3xl">
-        <p className="text-sm font-semibold uppercase tracking-wider text-violet-700">Prueba técnica · Equipo de 3 agentes</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900 sm:text-4xl">
-          Pide un cambio en una web y mira cómo lo resuelven tres agentes de IA
-        </h1>
-        <p className="mt-4 text-lg text-zinc-600">
-          El equipo trabaja sobre la web de una panadería de ejemplo. Cada ejecución parte de una copia limpia, así que
-          puedes pedir lo que quieras sin romper nada. En el panel verás qué hace cada agente y en qué estado está cada
-          tarea, en directo.
-        </p>
-        <p className="mt-3 text-sm">
-          <a href="/preview/original/index.html" target="_blank" rel="noreferrer" className="font-medium text-violet-700 hover:underline">
-            Ver la web de partida ↗
-          </a>
-        </p>
+      <section className="grid items-start gap-8 lg:grid-cols-12">
+        <div className="lg:col-span-5 lg:pt-4">
+          <p className="text-sm font-semibold uppercase tracking-wider text-violet-700">Prueba técnica · Equipo de 3 agentes</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900 sm:text-4xl">
+            Pide un cambio en una web y mira cómo lo resuelven tres agentes de IA
+          </h1>
+          <p className="mt-4 text-lg text-zinc-600">
+            El equipo trabaja sobre la web de una panadería de ejemplo, la que ves aquí. Cada ejecución parte de una
+            copia limpia, así que puedes pedir lo que quieras sin romper nada. En el panel verás qué hace cada agente y
+            en qué estado está cada tarea, en directo.
+          </p>
+        </div>
+        <OriginalSite />
       </section>
 
       <section className="mt-10 grid gap-4 md:grid-cols-3" aria-label="Los tres agentes">
@@ -83,6 +81,33 @@ export default function Home() {
         </div>
       </section>
     </main>
+  );
+}
+
+/** The sample website every run starts from, live and navigable. */
+function OriginalSite() {
+  const src = "/preview/original/index.html";
+  return (
+    <figure className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-zinc-200 lg:col-span-7">
+      <figcaption className="flex items-center gap-3 border-b border-zinc-100 px-4 py-2.5 text-sm">
+        <span className="flex gap-1.5" aria-hidden="true">
+          <span className="size-2.5 rounded-full bg-zinc-200" />
+          <span className="size-2.5 rounded-full bg-zinc-200" />
+          <span className="size-2.5 rounded-full bg-zinc-200" />
+        </span>
+        <span className="text-zinc-600">Web de partida · Panadería La Espiga</span>
+        <a href={src} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium text-violet-700 hover:underline">
+          Abrir en una pestaña ↗
+        </a>
+      </figcaption>
+      <iframe
+        src={src}
+        title="Web de partida: Panadería La Espiga"
+        sandbox="allow-scripts allow-forms"
+        loading="lazy"
+        className="h-80 w-full bg-white sm:h-[26rem]"
+      />
+    </figure>
   );
 }
 

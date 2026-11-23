@@ -12,11 +12,11 @@ import { SitePreview } from "./site-preview";
 import { TaskList } from "./task-list";
 import { useRunState } from "./use-run-state";
 
-type Tab = "activity" | "preview" | "files";
+type Tab = "preview" | "files";
 
 export function RunDashboard({ runId }: { runId: string }) {
   const { state, events, error, notFound, refresh } = useRunState(runId);
-  const [tab, setTab] = useState<Tab>("activity");
+  const [tab, setTab] = useState<Tab>("preview");
   const now = useNow(state ? ACTIVE_RUN_STATUSES.includes(state.run.status) : false);
 
   if (notFound) {
@@ -104,31 +104,40 @@ export function RunDashboard({ runId }: { runId: string }) {
 
       <AgentCards agents={agents} tasks={tasks} />
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        <section className="lg:col-span-5" aria-labelledby="tasks-title">
+      {/* Tasks and activity on the left; the website stays in view on the right.
+          On small screens the website goes between tasks and activity. */}
+      <div className="grid gap-6 lg:grid-cols-12 lg:grid-rows-[auto_1fr]">
+        <section className="lg:col-span-5 lg:col-start-1 lg:row-start-1" aria-labelledby="tasks-title">
           <h2 id="tasks-title" className="mb-3 text-lg font-semibold text-zinc-900">
             Tareas {tasks.length > 0 && <span className="text-zinc-400">({tasks.filter((t) => t.status === "done").length}/{tasks.length})</span>}
           </h2>
           <TaskList tasks={tasks} planning={run.status === "planning" || run.status === "queued"} />
         </section>
 
-        <section className="lg:col-span-7">
-          <div role="tablist" aria-label="Detalle de la ejecución" className="mb-3 flex gap-1 rounded-lg bg-zinc-200/60 p-1 text-sm">
-            <TabButton id="activity" current={tab} onSelect={setTab}>
-              Actividad ({events.length})
-            </TabButton>
-            <TabButton id="preview" current={tab} onSelect={setTab}>
-              Vista previa
-            </TabButton>
-            <TabButton id="files" current={tab} onSelect={setTab}>
-              Archivos{changedFiles > 0 ? ` (${changedFiles} cambiados)` : ""}
-            </TabButton>
+        <section className="lg:col-span-7 lg:col-start-6 lg:row-span-2 lg:row-start-1" aria-label="La web">
+          <div className={tab === "preview" ? "lg:sticky lg:top-4" : ""}>
+            <div role="tablist" aria-label="La web" className="mb-3 flex gap-1 rounded-lg bg-zinc-200/60 p-1 text-sm">
+              <TabButton id="preview" current={tab} onSelect={setTab}>
+                {active ? "Vista previa en directo" : "Vista previa"}
+              </TabButton>
+              <TabButton id="files" current={tab} onSelect={setTab}>
+                Archivos{changedFiles > 0 ? ` (${changedFiles} cambiados)` : ""}
+              </TabButton>
+            </div>
+            <div role="tabpanel">
+              {tab === "preview" && (
+                <SitePreview runId={runId} files={files} frameClassName="h-[32rem] lg:h-[calc(100vh-9.5rem)] lg:min-h-[28rem]" />
+              )}
+              {tab === "files" && <FileBrowser runId={runId} files={files} />}
+            </div>
           </div>
-          <div role="tabpanel">
-            {tab === "activity" && <ActivityFeed events={events} tasks={tasks} active={active} />}
-            {tab === "preview" && <SitePreview runId={runId} files={files} />}
-            {tab === "files" && <FileBrowser runId={runId} files={files} />}
-          </div>
+        </section>
+
+        <section className="lg:col-span-5 lg:col-start-1 lg:row-start-2" aria-labelledby="activity-title">
+          <h2 id="activity-title" className="mb-3 text-lg font-semibold text-zinc-900">
+            Actividad <span className="text-zinc-400">({events.length})</span>
+          </h2>
+          <ActivityFeed events={events} tasks={tasks} active={active} />
         </section>
       </div>
     </main>
