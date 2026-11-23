@@ -82,6 +82,7 @@ Medidos el 23 de noviembre de 2026, en producción (Vercel) y en local:
 
 | Petición | Modelo | Dónde | Tareas | Intentos | Duración | Coste |
 | --- | --- | --- | --- | --- | --- | --- |
+| Iteración: «Añade a la portada una sección de opiniones de clientes con tres testimonios» sobre la web con contacto | Sonnet 5.5 | Producción | 1 | 1 | 34 s | 0,13 $ |
 | «Añade una página de contacto a esta web» | Sonnet 5.5 | Local | 1 | 1 | 44 s | 0,14 $ |
 | «Añade una página de contacto a esta web» | Opus 5.5 | Producción | 1 | 1 | 1 min 5 s | 0,32 $ |
 | Página de contacto con formulario y horario | Opus 5.5 | Local | 1 | 1 | 1 min 14 s | 0,34 $ |
