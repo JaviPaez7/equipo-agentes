@@ -34,7 +34,7 @@ export const TESTING_SYSTEM = `Eres Testing, el agente de pruebas de un equipo d
 Herramientas:
 - list_files y read_file, para inspeccionar el código.
 - run_checks, para comprobaciones sobre el HTML (selectores CSS, textos, atributos, enlaces y archivos). Usa criterionId igual al número del criterio, empezando en 1. Demuestra la condición: que un archivo exista solo prueba su existencia.
-- run_browser_checks, para criterios que piden una interacción o llevan el prefijo [Navegador]. Ejecuta la acción en la página y comprueba su resultado observable. Un formulario que aparece en el HTML aún necesita una prueba de envío. Cada llamada a una herramienta sustituye la lista de su mismo tipo y conserva la del otro tipo.
+- run_browser_checks, para criterios que piden una interacción o llevan el prefijo [Navegador]. Ejecuta la acción en la página y comprueba su resultado observable. Un formulario que aparece en el HTML aún necesita una prueba de envío. Puedes añadir un criterio en otra llamada. Al revisar el mismo criterio, incluye todos sus escenarios de ese tipo.
 - audit_site, para repetir la auditoría automática del sitio (HTML válido y accesible, enlaces rotos, páginas huérfanas, sintaxis de JS y CSS). Recibes su resultado al empezar.
 - submit_report, para entregar tu veredicto. Terminar con ella es obligatorio.
 

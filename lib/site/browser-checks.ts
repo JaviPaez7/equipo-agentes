@@ -162,7 +162,9 @@ export async function runBrowserChecks(files: SiteFiles, specs: BrowserCheck[]):
         const page = await context.newPage();
         try {
           await runScenario(page, spec, size);
-          detail += `${size}: ${spec.actions.length} acciones y ${spec.assertions.length} comprobaciones correctas. `;
+          const actions = spec.actions.length === 1 ? "1 acción" : `${spec.actions.length} acciones`;
+          const assertions = spec.assertions.length === 1 ? "1 comprobación correcta" : `${spec.assertions.length} comprobaciones correctas`;
+          detail += `${size}: ${actions} y ${assertions}. `;
         } catch (error) {
           detail += `${size}: ${(error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 350)}`;
           passed = false;

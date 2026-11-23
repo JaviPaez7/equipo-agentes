@@ -6,6 +6,12 @@ export type CheckDefinition =
   | { kind: "static"; check: AgentCheck & { criterionId: number } }
   | { kind: "browser"; check: BrowserCheck };
 
+/** A follow-up tool call can correct one criterion without discarding all the other evidence. */
+export function mergeCriterionChecks(previous: CheckResult[], results: CheckResult[]): CheckResult[] {
+  const replaced = new Set(results.map((entry) => `${entry.kind}:${entry.criterionId}`));
+  return [...previous.filter((entry) => !replaced.has(`${entry.kind}:${entry.criterionId}`)), ...results];
+}
+
 /** The planner labels interactions. Older or unlabelled plans can still describe an explicit action. */
 export function needsBrowser(criterion: string): boolean {
   return /\[navegador\]|\b(?:al|tras|despu[eé]s de)\s+(?:hacer\s+(?:clic|click)|pulsar|enviar|rellenar|marcar|desmarcar|seleccionar|escribir|abrir|cerrar)\b|\b(?:hacer\s+(?:clic|click)|env[ií]o del formulario|validaci[oó]n nativa)\b/iu.test(criterion);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CheckResult } from "@/lib/db/schema";
-import { approvalProblem, evaluateDefinitions, finalChecks, needsBrowser, type CheckDefinition } from "@/lib/site/acceptance";
+import { approvalProblem, evaluateDefinitions, finalChecks, mergeCriterionChecks, needsBrowser, type CheckDefinition } from "@/lib/site/acceptance";
 import { auditSite, type AgentCheck } from "@/lib/site/checks";
 import { SITE_TEMPLATE } from "@/lib/site/template";
 
@@ -15,6 +15,15 @@ const definition = (criterionId: number, check: Partial<AgentCheck>): CheckDefin
 });
 
 describe("acceptance of a Testing report", () => {
+  it("keeps earlier criteria when Testing fills a gap or corrects one scenario", () => {
+    const staticCheck = evidence(1);
+    const second = evidence(2, "browser");
+    const initial = [staticCheck, evidence(1, "browser"), second];
+    const revised = { ...evidence(1, "browser"), passed: false };
+    const third = evidence(3, "browser");
+    expect(mergeCriterionChecks(mergeCriterionChecks(initial, [third]), [revised]))
+      .toEqual([staticCheck, second, third, revised]);
+  });
   const plan = ["Enlace al contacto", "Horario visible", "Formulario con tres campos"];
 
   it("requires evidence for each criterion, even with a green site audit or repeated assertions for one criterion", () => {

@@ -10,7 +10,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { testReports, type CheckResult, type TestFailure } from "@/lib/db/schema";
 import { AGENT_CHECK_TYPES, auditSite, summarizeChecks } from "@/lib/site/checks";
-import { approvalProblem, coverageProblem, evaluateDefinitions, finalChecks, type CheckDefinition } from "@/lib/site/acceptance";
+import { approvalProblem, coverageProblem, evaluateDefinitions, finalChecks, mergeCriterionChecks, type CheckDefinition } from "@/lib/site/acceptance";
 import { browserCheckSchema, browserCheckToolSchema } from "@/lib/site/browser-checks";
 import { applyEditorCommand, listing } from "@/lib/site/editor";
 import {
@@ -59,7 +59,7 @@ const TOOLS: BetaTool[] = [
       "attribute_equals (algún elemento del selector tiene el atributo attribute; si value no es null, con ese valor exacto), " +
       "links_to (la página page tiene un enlace <a> a la ruta value), file_exists (existe el archivo page). " +
       "criterionId es el número del criterio en el plan (empieza en 1). Los campos que un tipo no usa van a null. " +
-      "Cada llamada sustituye las comprobaciones estáticas anteriores. Las de navegador se conservan.",
+      "Cada llamada actualiza solo los criterios indicados. Incluye todas sus comprobaciones estáticas.",
     strict: true,
     input_schema: {
       type: "object",
@@ -89,7 +89,7 @@ const TOOLS: BetaTool[] = [
   },
   {
     name: "run_browser_checks",
-    description: "Prueba interacciones en un navegador real. Usa un escenario con aserciones por criterio de navegador. Cada llamada sustituye solo los escenarios de navegador anteriores.",
+    description: "Prueba interacciones en un navegador real. Incluye los escenarios completos de los criterios que actualices. Los demás conservan su evidencia.",
     strict: true,
     input_schema: {
       type: "object", additionalProperties: false, required: ["checks"],
@@ -282,7 +282,6 @@ export async function testingTurn(runId: string, taskId: string, attempt: number
       case "run_checks":
       case "run_browser_checks": {
         const browser = toolUse.name === "run_browser_checks";
-        const kind = browser ? "browser" : "static";
         let definitions: CheckDefinition[];
         if (browser) {
           const parsed = z.object({ checks: z.array(browserCheckSchema).min(1).max(8) }).safeParse(toolUse.input);
@@ -298,7 +297,7 @@ export async function testingTurn(runId: string, taskId: string, attempt: number
           break;
         }
         const checkResults = await evaluateDefinitions(files, definitions);
-        state.agentChecks = [...(state.agentChecks ?? []).filter((entry) => entry.kind && entry.kind !== kind), ...checkResults];
+        state.agentChecks = mergeCriterionChecks(state.agentChecks ?? [], checkResults);
         const failed = checkResults.filter((c) => !c.passed).length;
         reply(checkResults.map((c) => `${c.passed ? "✔" : "✘"} ${c.description} — ${c.detail}`).join("\n"));
         await logEvent({
@@ -306,7 +305,7 @@ export async function testingTurn(runId: string, taskId: string, attempt: number
           taskId,
           agent: "testing",
           kind: "test",
-          title:
+          title: checkResults.length === 1 ? `Ejecuta una comprobación: ${failed ? "falla" : "pasa"}` :
             failed === 0
               ? `Ejecuta ${checkResults.length} comprobaciones: todas pasan`
               : `Ejecuta ${checkResults.length} comprobaciones: ${failed} fallan`,
