@@ -2,7 +2,7 @@
 
 Tres agentes de IA (**Orquestador**, **Develop** y **Testing**) que trabajan juntos para aplicar cambios a una web. Le pides algo como «añade una página de contacto a esta web» y en pantalla ves, en directo, cómo el Orquestador divide la petición en tareas, cómo Develop edita los archivos y cómo Testing comprueba el resultado y le devuelve lo que falla hasta que todo pasa.
 
-- **App:** _(pendiente de publicar)_
+- **App:** <https://equipo-agentes-delta.vercel.app>
 - **Usuario de prueba:** se facilita en la entrega. Ver ejecuciones es público; lanzar una nueva requiere iniciar sesión.
 
 ## Qué hace cada agente
