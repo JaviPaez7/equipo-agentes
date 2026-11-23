@@ -54,6 +54,7 @@ export const TASK_STATUS: Record<TaskStatus, { label: string; className: string 
   changes_requested: { label: "Cambios pedidos", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   done: { label: "Completada", className: "bg-emerald-600 text-white ring-emerald-600" },
   failed: { label: "Fallida", className: "bg-red-50 text-red-700 ring-red-200" },
+  cancelled: { label: "Cancelada", className: "bg-zinc-100 text-zinc-600 ring-zinc-200" },
 };
 
 export const AGENT_STATUS: Record<AgentStatus, { label: string; className: string }> = {

@@ -13,6 +13,7 @@ import {
   getSiteFiles,
   getTask,
   getTasks,
+  isTerminal,
   logEvent,
   saveConversation,
   setAgent,
@@ -30,7 +31,7 @@ export type TurnResult = { done: boolean; cancelled?: boolean };
 /** Prepares Develop for an attempt: first brief, or Testing's feedback on later attempts. */
 export async function beginDevelopment(runId: string, taskId: string, attempt: number): Promise<TurnResult> {
   const run = await getRun(runId);
-  if (!run || run.status === "cancelled") return { done: true, cancelled: true };
+  if (!run || isTerminal(run.status)) return { done: true, cancelled: true };
 
   const task = await getTask(taskId);
   const allTasks = await getTasks(runId);
@@ -91,7 +92,7 @@ export async function beginDevelopment(runId: string, taskId: string, attempt: n
 
 export async function developTurn(runId: string, taskId: string): Promise<TurnResult> {
   const run = await getRun(runId);
-  if (!run || run.status === "cancelled") return { done: true, cancelled: true };
+  if (!run || isTerminal(run.status)) return { done: true, cancelled: true };
 
   const conversation = await getConversation(taskId, "develop");
   if (!conversation) throw new Error("Develop no tiene conversación para esta tarea");
@@ -105,7 +106,7 @@ export async function developTurn(runId: string, taskId: string): Promise<TurnRe
     tools: [EDITOR_TOOL],
     messages,
   });
-  await addUsage(runId, agentModel(), response.usage);
+  if (!(await addUsage(runId, agentModel(), response.usage))) return { done: true, cancelled: true };
   messages.push({ role: "assistant", content: response.content });
 
   const thinking = thinkingSummary(response);

@@ -19,6 +19,7 @@ import {
   startRun,
   summarizeRun,
   testingTurn,
+  validateFinalSite,
 } from "./steps";
 
 export const MAX_ATTEMPTS = 3;
@@ -33,6 +34,7 @@ export async function agentTeamWorkflow(runId: string) {
     if (!started.ok) return { status: "cancelled" };
 
     const plan = await planTasks(runId);
+    if (plan.cancelled) return { status: "cancelled" };
     if (plan.rejected) return { status: "rejected" };
 
     for (const taskId of plan.taskIds) {
@@ -63,8 +65,11 @@ export async function agentTeamWorkflow(runId: string) {
       await finishTask(runId, taskId, passed);
     }
 
-    await summarizeRun(runId);
-    return { status: "finished" };
+    for (const taskId of plan.taskIds) {
+      if ((await validateFinalSite(runId, taskId)).cancelled) return await cancelled(runId);
+    }
+    const outcome = await summarizeRun(runId);
+    return { status: outcome ?? "finished" };
   } catch (error) {
     await failRun(runId, error instanceof Error ? error.message : String(error));
     throw error;

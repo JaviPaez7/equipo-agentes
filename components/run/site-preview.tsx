@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { FileJson } from "@/lib/ui/types";
+import { PreviewFrame, type PreviewLocation } from "./preview-frame";
 
 /**
  * Shows the run's website in a sandboxed iframe (no same-origin access, so
@@ -28,18 +29,19 @@ export function SitePreview({
     return latest(changed.filter((f) => f.change === "new")) ?? latest(changed);
   }, [files]);
 
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<PreviewLocation | null>(null);
   const [version, setVersion] = useState<"run" | "original">("run");
-  const wanted = picked ?? focus?.path ?? "index.html";
+  const wanted = picked?.page ?? focus?.path ?? "index.html";
   const current = pages.includes(wanted) ? wanted : "index.html";
   // A page the agents created does not exist in the original site.
   const isNewPage = files.some((f) => f.path === current && f.change === "new");
   const shown = version === "original" && isNewPage ? "index.html" : current;
 
-  // Changes whenever any file changes size or author, which reloads the iframe.
-  const contentKey = useMemo(() => files.map((f) => `${f.path}:${f.bytes}:${f.updatedBy}`).join("|"), [files]);
+  const contentKey = useMemo(() => files.map((f) => `${f.path}:${f.updatedAt}`).join("|"), [files]);
   const base = version === "run" ? `/preview/${runId}` : "/preview/original";
-  const src = `${base}/${shown}`;
+  const location = { page: shown, suffix: picked?.page === shown ? picked.suffix : "" };
+  const src = `${base}/${shown}${location.suffix}`;
+  const visiblePages = version === "run" ? pages : files.filter((f) => f.change !== "new" && f.path.endsWith(".html")).map((f) => f.path);
 
   return (
     <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-zinc-200">
@@ -47,11 +49,11 @@ export function SitePreview({
         <label className="flex items-center gap-2 text-zinc-600">
           Página
           <select
-            value={current}
-            onChange={(e) => setPicked(e.target.value)}
+            value={shown}
+            onChange={(e) => setPicked({ page: e.target.value, suffix: "" })}
             className="rounded-md border border-zinc-300 px-2 py-1 text-sm text-zinc-900"
           >
-            {pages.map((p) => (
+            {visiblePages.map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
@@ -81,11 +83,13 @@ export function SitePreview({
           Abrir en una pestaña ↗
         </a>
       </div>
-      <iframe
-        key={`${src}|${version === "run" ? contentKey : ""}`}
-        src={src}
+      <PreviewFrame
+        base={base}
+        pages={visiblePages}
+        location={location}
+        revision={version === "run" ? contentKey : undefined}
+        onNavigate={setPicked}
         title={`Vista previa de ${shown}`}
-        sandbox="allow-scripts allow-forms"
         className={`w-full bg-white ${frameClassName}`}
       />
     </div>

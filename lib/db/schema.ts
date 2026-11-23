@@ -38,6 +38,7 @@ export const TASK_STATUSES = [
   "changes_requested",
   "done",
   "failed",
+  "cancelled",
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
@@ -210,7 +211,7 @@ export const conversations = pgTable(
 
 export interface ConversationState {
   attempt?: number;
-  /** Results of Testing's latest run_checks call in the current attempt. */
+  /** Latest independently executed static and browser checks for this attempt. */
   agentChecks?: CheckResult[];
 }
 
@@ -226,6 +227,12 @@ export interface CheckResult {
   detail: string;
   /** "auto" = site-wide audit the system always runs; "agent" = check Testing chose. */
   source: "auto" | "agent";
+  /** Position in the task's acceptance plan, starting at 1. Absent in historical reports. */
+  criterionId?: number;
+  kind?: "static" | "browser";
+  stage?: "final";
+  /** Executable input retained with the original evidence for final regression checks. */
+  definition?: import("@/lib/site/acceptance").CheckDefinition;
 }
 
 export type Run = typeof runs.$inferSelect;

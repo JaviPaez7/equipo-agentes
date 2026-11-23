@@ -7,7 +7,7 @@ const EXAMPLES = [
   "Añade una página de contacto a esta web con un formulario y el horario de la tienda.",
   "Crea una página de preguntas frecuentes con al menos cinco preguntas sobre pedidos y alérgenos.",
   "Añade a la portada una sección de opiniones de clientes con tres testimonios.",
-  "Añade un botón para cambiar entre tema claro y oscuro que recuerde la preferencia.",
+  "Añade un buscador en la página de productos que filtre la lista al escribir y avise si no hay resultados.",
 ];
 
 export function NewRunForm() {
@@ -71,7 +71,7 @@ export function NewRunForm() {
         </p>
       )}
       <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="text-xs text-zinc-500">Una ejecución suele tardar entre 3 y 10 minutos.</p>
+        <p className="text-xs text-zinc-500">La página de contacto tardó 1 min 14 s en una prueba local. Tu petición puede tardar más.</p>
         <button
           type="submit"
           disabled={pending || request.trim().length < 8}

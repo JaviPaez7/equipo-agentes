@@ -30,7 +30,12 @@ export function RunDashboard({ runId }: { runId: string }) {
     );
   }
   if (!state) {
-    return <main className="mx-auto max-w-7xl px-4 py-8 text-sm text-zinc-500 sm:px-6">Cargando ejecución…</main>;
+    return (
+      <main className="mx-auto max-w-7xl px-4 py-8 text-sm text-zinc-600 sm:px-6" role="status">
+        {error ?? "Cargando ejecución…"}
+        {error && <button type="button" onClick={refresh} className="ml-3 font-medium text-violet-700 underline">Reintentar ahora</button>}
+      </main>
+    );
   }
 
   const { run, agents, tasks, files, canCancel } = state;

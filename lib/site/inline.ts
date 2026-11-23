@@ -8,7 +8,7 @@ import { resolveReference } from "./paths";
 
 export type SiteFiles = Record<string, string>;
 
-export function inlineAssets(page: string, html: string, files: SiteFiles): string {
+export function inlineAssets(page: string, html: string, files: SiteFiles, previewBase?: string): string {
   const { document } = parseHTML(html);
   const lookup = (ref: string | null) => {
     if (!ref) return null;
@@ -46,6 +46,33 @@ export function inlineAssets(page: string, html: string, files: SiteFiles): stri
     img.setAttribute("src", `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`);
   }
 
+  if (previewBase) addPreviewNavigation(document, page, files, previewBase);
   const doctype = /^\s*<!doctype html>/i.test(html) ? "<!DOCTYPE html>\n" : "";
   return doctype + document.documentElement.outerHTML;
+}
+
+function addPreviewNavigation(document: Document, page: string, files: SiteFiles, previewBase: string) {
+  // A root-relative link belongs to the virtual site, even when it is served
+  // under /preview/{runId}. Use the same path resolution as Testing.
+  for (const link of document.querySelectorAll("a[href]")) {
+    const href = link.getAttribute("href") ?? "";
+    const resolved = resolveReference(page, href);
+    if (resolved.kind !== "internal" || !Object.hasOwn(files, resolved.path)) continue;
+    const target = new URL(href, `https://preview.invalid/${page}`);
+    link.setAttribute("href", `${previewBase}/${resolved.path}${target.search}${target.hash}`);
+  }
+
+  // Report the actual URL after native navigation. The parent accepts messages
+  // only from its own opaque iframe and only for files in the active preview.
+  const navigation = document.createElement("script");
+  navigation.textContent = `(() => {
+    if (parent === window) return;
+    const report = () => parent.postMessage(
+      { type: "preview-location", href: location.href }, new URL(location.href).origin
+    );
+    addEventListener("pageshow", report);
+    addEventListener("hashchange", report);
+    addEventListener("popstate", report);
+  })();`;
+  document.head.prepend(navigation);
 }

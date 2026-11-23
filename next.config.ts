@@ -4,6 +4,10 @@ import { withWorkflow } from "workflow/next";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
+  serverExternalPackages: ["playwright-core", "@sparticuz/chromium"],
+  outputFileTracingIncludes: {
+    "/.well-known/workflow/v1/flow": ["./node_modules/@sparticuz/chromium/bin/**"],
+  },
   turbopack: {
     rules: {
       "*.css": {

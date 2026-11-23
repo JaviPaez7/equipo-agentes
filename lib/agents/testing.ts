@@ -6,9 +6,12 @@ import type {
   BetaToolUseBlock,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { z } from "zod";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { testReports, type CheckResult, type TestFailure } from "@/lib/db/schema";
-import { AGENT_CHECK_TYPES, auditSite, runAgentChecks, summarizeChecks } from "@/lib/site/checks";
+import { AGENT_CHECK_TYPES, auditSite, summarizeChecks } from "@/lib/site/checks";
+import { approvalProblem, coverageProblem, evaluateDefinitions, finalChecks, type CheckDefinition } from "@/lib/site/acceptance";
+import { browserCheckSchema, browserCheckToolSchema } from "@/lib/site/browser-checks";
 import { applyEditorCommand, listing } from "@/lib/site/editor";
 import {
   addUsage,
@@ -17,6 +20,7 @@ import {
   getRun,
   getSiteFiles,
   getTask,
+  isTerminal,
   logEvent,
   saveConversation,
   setAgent,
@@ -54,7 +58,8 @@ const TOOLS: BetaTool[] = [
       "text_contains (algún elemento del selector contiene value, sin distinguir mayúsculas ni tildes), " +
       "attribute_equals (algún elemento del selector tiene el atributo attribute; si value no es null, con ese valor exacto), " +
       "links_to (la página page tiene un enlace <a> a la ruta value), file_exists (existe el archivo page). " +
-      "Los campos que un tipo no usa van a null. Cada llamada sustituye a la anterior: incluye siempre la lista completa.",
+      "criterionId es el número del criterio en el plan (empieza en 1). Los campos que un tipo no usa van a null. " +
+      "Cada llamada sustituye las comprobaciones estáticas anteriores. Las de navegador se conservan.",
     strict: true,
     input_schema: {
       type: "object",
@@ -66,8 +71,9 @@ const TOOLS: BetaTool[] = [
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["description", "type", "page", "selector", "attribute", "value", "min"],
+            required: ["criterionId", "description", "type", "page", "selector", "attribute", "value", "min"],
             properties: {
+              criterionId: { type: "integer", description: "Número del criterio que demuestra esta comprobación (desde 1)." },
               description: { type: "string", description: "Qué criterio verifica, en una frase." },
               type: { type: "string", enum: [...AGENT_CHECK_TYPES] },
               page: { type: "string" },
@@ -79,6 +85,15 @@ const TOOLS: BetaTool[] = [
           },
         },
       },
+    },
+  },
+  {
+    name: "run_browser_checks",
+    description: "Prueba interacciones en un navegador real. Usa un escenario con aserciones por criterio de navegador. Cada llamada sustituye solo los escenarios de navegador anteriores.",
+    strict: true,
+    input_schema: {
+      type: "object", additionalProperties: false, required: ["checks"],
+      properties: { checks: { type: "array", items: browserCheckToolSchema } },
     },
   },
   {
@@ -122,6 +137,7 @@ const ChecksInput = z.object({
   checks: z
     .array(
       z.object({
+        criterionId: z.number().int().positive(),
         description: z.string(),
         type: z.enum(AGENT_CHECK_TYPES),
         page: z.string(),
@@ -145,7 +161,7 @@ export type TestTurnResult = TurnResult & { passed?: boolean };
 /** Prepares Testing for an attempt and hands it the automatic audit. */
 export async function beginTesting(runId: string, taskId: string, attempt: number): Promise<TurnResult> {
   const run = await getRun(runId);
-  if (!run || run.status === "cancelled") return { done: true, cancelled: true };
+  if (!run || isTerminal(run.status)) return { done: true, cancelled: true };
 
   const task = await getTask(taskId);
   await updateTask(taskId, { status: "testing" });
@@ -175,7 +191,7 @@ export async function beginTesting(runId: string, taskId: string, attempt: numbe
     `\nAuditoría automática del sitio:\n${summarizeChecks(audit)}`,
     `\nArchivos actuales (${Object.keys(files).length}):\n${listing(files)}`,
     `\nContenido actual:\n\n${dumpSite(files)}`,
-    "\nEjecuta run_checks con la lista completa de comprobaciones y termina con submit_report.",
+    "\nPrueba cada número del plan con run_checks o run_browser_checks según corresponda. Termina con submit_report.",
   ].join("\n");
 
   const messages = [...((conversation?.messages ?? []) as BetaMessageParam[]), { role: "user" as const, content }];
@@ -201,9 +217,9 @@ export async function beginTesting(runId: string, taskId: string, attempt: numbe
 
 export async function testingTurn(runId: string, taskId: string, attempt: number): Promise<TestTurnResult> {
   const run = await getRun(runId);
-  if (!run || run.status === "cancelled") return { done: true, cancelled: true };
+  if (!run || isTerminal(run.status)) return { done: true, cancelled: true };
 
-  const conversation = await getConversation(taskId, "testing");
+  const [conversation, task] = await Promise.all([getConversation(taskId, "testing"), getTask(taskId)]);
   if (!conversation) throw new Error("Testing no tiene conversación para esta tarea");
   const messages = conversation.messages as BetaMessageParam[];
   const state = { ...conversation.state };
@@ -211,7 +227,7 @@ export async function testingTurn(runId: string, taskId: string, attempt: number
 
   await setAgent(runId, "testing", "working", "Decidiendo qué comprobar…", { taskId });
   const response = await callClaude({ agent: "testing", system: TESTING_SYSTEM, tools: TOOLS, messages });
-  await addUsage(runId, agentModel(), response.usage);
+  if (!(await addUsage(runId, agentModel(), response.usage))) return { done: true, cancelled: true };
   messages.push({ role: "assistant", content: response.content });
 
   const thinking = thinkingSummary(response);
@@ -263,14 +279,26 @@ export async function testingTurn(runId: string, taskId: string, attempt: number
         break;
       }
 
-      case "run_checks": {
-        const parsed = ChecksInput.safeParse(toolUse.input);
-        if (!parsed.success) {
-          reply(`Entrada no válida: ${parsed.error.message}`, true);
+      case "run_checks":
+      case "run_browser_checks": {
+        const browser = toolUse.name === "run_browser_checks";
+        const kind = browser ? "browser" : "static";
+        let definitions: CheckDefinition[];
+        if (browser) {
+          const parsed = z.object({ checks: z.array(browserCheckSchema).min(1).max(8) }).safeParse(toolUse.input);
+          if (!parsed.success) { reply(`Escenario no válido: ${parsed.error.message}`, true); break; }
+          definitions = parsed.data.checks.map((check) => ({ kind: "browser", check }));
+        } else {
+          const parsed = ChecksInput.safeParse(toolUse.input);
+          if (!parsed.success) { reply(`Entrada no válida: ${parsed.error.message}`, true); break; }
+          definitions = parsed.data.checks.map((check) => ({ kind: "static", check }));
+        }
+        if (definitions.some(({ check }) => check.criterionId < 1 || check.criterionId > task.testPlan.length)) {
+          reply(`El número de criterio debe estar entre 1 y ${task.testPlan.length}.`, true);
           break;
         }
-        const checkResults = runAgentChecks(files, parsed.data.checks);
-        state.agentChecks = checkResults;
+        const checkResults = await evaluateDefinitions(files, definitions);
+        state.agentChecks = [...(state.agentChecks ?? []).filter((entry) => entry.kind && entry.kind !== kind), ...checkResults];
         const failed = checkResults.filter((c) => !c.passed).length;
         reply(checkResults.map((c) => `${c.passed ? "✔" : "✘"} ${c.description} — ${c.detail}`).join("\n"));
         await logEvent({
@@ -308,19 +336,9 @@ export async function testingTurn(runId: string, taskId: string, attempt: number
         const audit = await auditSite(files);
         const auditFailures = audit.filter((c) => !c.passed);
         const agentChecks = state.agentChecks ?? [];
-        const agentFailures = agentChecks.filter((c) => !c.passed);
-
-        // The verdict must be backed by evidence; inconsistent reports go back to Testing.
-        if (report.passed && agentChecks.length === 0) {
-          reply("No puedes aprobar sin evidencias: ejecuta antes run_checks con una comprobación por criterio.", true);
-          break;
-        }
-        if (report.passed && agentFailures.length > 0) {
-          reply(`No puedes aprobar: tus comprobaciones fallan.\n${summarizeChecks(agentFailures)}`, true);
-          break;
-        }
-        if (report.passed && auditFailures.length > 0) {
-          reply(`No puedes aprobar: la auditoría automática falla.\n${summarizeChecks(auditFailures)}`, true);
+        const problem = report.passed ? approvalProblem(task.testPlan, [...audit, ...agentChecks], report.failures.length) : undefined;
+        if (problem) {
+          reply(`No puedes aprobar: ${problem}`, true);
           break;
         }
         if (!report.passed && report.failures.length === 0 && auditFailures.length === 0) {
@@ -386,8 +404,10 @@ async function recordVerdict(
 
 /** Used when Testing ran out of turns without a verdict: the attempt counts as failed. */
 export async function forceFailedVerdict(runId: string, taskId: string, attempt: number): Promise<boolean> {
-  const files = await getSiteFiles(runId);
+  const [files, task, conversation] = await Promise.all([getSiteFiles(runId), getTask(taskId), getConversation(taskId, "testing")]);
   const audit = await auditSite(files);
+  const evidence = conversation?.state.attempt === attempt ? conversation.state.agentChecks ?? [] : [];
+  const coverage = coverageProblem(task.testPlan, evidence);
   return recordVerdict(
     runId,
     taskId,
@@ -395,8 +415,54 @@ export async function forceFailedVerdict(runId: string, taskId: string, attempt:
     {
       passed: false,
       summary: "Testing no emitió un veredicto a tiempo; el intento se considera fallido.",
-      failures: [],
+      failures: coverage ? [{ criterion: "Cobertura del plan de pruebas", problem: coverage, suggestion: "Revisa las comprobaciones pendientes." }] : [],
     },
-    audit,
+    [...audit, ...evidence],
   );
+}
+
+/** Replay each approved task's own assertions after all development has ended. */
+export async function validateFinalSite(runId: string, taskId: string): Promise<{ cancelled: boolean }> {
+  const [run, task] = await Promise.all([getRun(runId), getTask(taskId)]);
+  if (!run || isTerminal(run.status)) return { cancelled: true };
+  if (task.status !== "done") return { cancelled: false };
+
+  const db = getDb();
+  const [original] = await db.select().from(testReports).where(eq(testReports.taskId, taskId))
+    .orderBy(desc(testReports.attempt), desc(testReports.createdAt)).limit(1);
+  // One stable report ID per task for the final phase, including retried workflow steps.
+  if (original?.id === taskId) return { cancelled: false };
+  const files = await getSiteFiles(runId);
+  const checks = await finalChecks(files, task.testPlan, original?.checks ?? [], await auditSite(files));
+  const failed = checks.filter((entry) => !entry.passed);
+  const passed = failed.length === 0;
+  const summary = passed
+    ? `Versión final: las ${checks.length} comprobaciones siguen pasando.`
+    : `Versión final: ${failed.length} comprobación(es) fallan. ${failed[0].description}: ${failed[0].detail}`;
+  const failures: TestFailure[] = failed.map((entry) => ({
+    criterion: entry.criterionId ? task.testPlan[entry.criterionId - 1] : entry.description,
+    problem: entry.detail,
+    suggestion: "Revisa el resultado final de la web y vuelve a ejecutar esta comprobación.",
+  }));
+
+  // Lock the run before writing. Cancellation, a retry and a final verdict cannot interleave.
+  // Report, task status and public event are committed together; replay produces no duplicate events.
+  await db.execute(sql`
+    WITH active AS (
+      SELECT id FROM runs WHERE id = ${runId}::uuid AND status = 'running' FOR UPDATE
+    ), saved AS (
+      INSERT INTO test_reports (id, task_id, attempt, passed, summary, failures, checks)
+      SELECT ${taskId}::uuid, ${taskId}::uuid, ${task.attempts + 1}, ${passed}, ${summary},
+        ${JSON.stringify(failures)}::jsonb, ${JSON.stringify(checks)}::jsonb FROM active
+      ON CONFLICT (id) DO NOTHING RETURNING task_id
+    ), applied AS (
+      UPDATE tasks SET status = ${passed ? "done" : "failed"}, last_feedback = ${passed ? null : summary}, updated_at = now()
+      FROM saved WHERE tasks.id = saved.task_id RETURNING tasks.id
+    )
+    INSERT INTO events (run_id, task_id, agent, kind, title, detail)
+    SELECT ${runId}::uuid, applied.id, 'testing', 'test',
+      ${passed ? "Verificación final aprobada" : "Fallo en la verificación final"}, ${summary.slice(0, 4000)}
+    FROM applied
+  `);
+  return { cancelled: false };
 }

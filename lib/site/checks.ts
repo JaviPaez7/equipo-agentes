@@ -249,6 +249,7 @@ export function runAgentChecks(files: SiteFiles, checks: AgentCheck[]): CheckRes
 function runAgentCheck(files: SiteFiles, check: AgentCheck): CheckResult {
   const base = { source: "agent" as const, description: check.description || `${check.type} en ${check.page}` };
   const page = check.page.replace(/^\/+/, "").replace(/^\.\//, "");
+  if (!page) return { ...base, passed: false, detail: "Indica la ruta de la página." };
 
   if (check.type === "file_exists") {
     const ok = Object.prototype.hasOwnProperty.call(files, page);
@@ -261,6 +262,7 @@ function runAgentCheck(files: SiteFiles, check: AgentCheck): CheckResult {
 
   if (check.type === "links_to") {
     const target = (check.value ?? "").replace(/^\/+/, "").replace(/^\.\//, "");
+    if (!target) return { ...base, passed: false, detail: "Indica la ruta de destino." };
     const anchors = [...doc.querySelectorAll("a[href]")];
     const found = anchors.some((a) => {
       const ref = resolveReference(page, a.getAttribute("href") ?? "");
@@ -274,6 +276,7 @@ function runAgentCheck(files: SiteFiles, check: AgentCheck): CheckResult {
   }
 
   const selector = check.selector ?? "";
+  if (!selector.trim()) return { ...base, passed: false, detail: "Indica un selector CSS." };
   let matches: Element[];
   try {
     matches = [...doc.querySelectorAll(selector)];
@@ -296,6 +299,7 @@ function runAgentCheck(files: SiteFiles, check: AgentCheck): CheckResult {
       };
     case "count_at_least": {
       const min = check.min ?? 1;
+      if (!Number.isInteger(min) || min < 1) return { ...base, passed: false, detail: "El mínimo debe ser positivo." };
       return {
         ...base,
         passed: matches.length >= min,
@@ -304,6 +308,7 @@ function runAgentCheck(files: SiteFiles, check: AgentCheck): CheckResult {
     }
     case "text_contains": {
       const expected = normalizeText(check.value ?? "");
+      if (!expected.trim()) return { ...base, passed: false, detail: "Indica el texto que se debe encontrar." };
       const hit = matches.some((el) => normalizeText(el.textContent ?? "").includes(expected));
       return {
         ...base,
@@ -317,6 +322,7 @@ function runAgentCheck(files: SiteFiles, check: AgentCheck): CheckResult {
     }
     case "attribute_equals": {
       const attribute = check.attribute ?? "";
+      if (!attribute.trim()) return { ...base, passed: false, detail: "Indica el atributo que se debe comprobar." };
       const values = matches.map((el) => el.getAttribute(attribute));
       const hit = values.some((v) => v !== null && (check.value === null || v === check.value));
       return {

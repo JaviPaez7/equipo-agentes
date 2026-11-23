@@ -1,5 +1,5 @@
 /** Database helpers shared by the agents and the API. */
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   AGENTS,
@@ -21,6 +21,7 @@ import { SITE_TEMPLATE } from "@/lib/site/template";
 import type { SiteFiles } from "@/lib/site/editor";
 
 const MAX_DETAIL = 6000;
+const ACTIVE: RunStatus[] = ["queued", "planning", "running"];
 
 export async function logEvent(input: {
   runId: string;
@@ -59,7 +60,11 @@ export async function setAgent(
       ...(options.countAction ? { actions: sql`${runAgents.actions} + 1` } : {}),
       updatedAt: new Date(),
     })
-    .where(and(eq(runAgents.runId, runId), eq(runAgents.agent, agent)));
+    .where(and(
+      eq(runAgents.runId, runId), eq(runAgents.agent, agent),
+      exists(getDb().select({ id: runs.id }).from(runs)
+        .where(and(eq(runs.id, runId), inArray(runs.status, ACTIVE))).for("share")),
+    ));
 }
 
 export async function setAllAgents(runId: string, status: AgentStatus, activity: string) {
@@ -75,21 +80,39 @@ export async function getRun(runId: string) {
 }
 
 export async function setRunStatus(runId: string, status: RunStatus, extra: Partial<typeof runs.$inferInsert> = {}) {
-  await getDb()
+  const changed = await getDb()
     .update(runs)
-    .set({ status, ...extra })
-    .where(eq(runs.id, runId));
+    .set({ ...extra, status })
+    .where(and(eq(runs.id, runId), inArray(runs.status, ACTIVE)))
+    .returning({ id: runs.id });
+  return changed.length > 0;
 }
 
-const TERMINAL: RunStatus[] = ["completed", "completed_with_failures", "rejected", "failed", "cancelled"];
-
 export function isTerminal(status: RunStatus) {
-  return TERMINAL.includes(status);
+  return !ACTIVE.includes(status);
+}
+
+/** The run, unfinished tasks, agent cards and cancellation event change together. */
+export async function cancelRun(runId: string, username: string) {
+  await getDb().execute(sql`
+    WITH cancelled AS (
+      UPDATE runs SET status = 'cancelled', finished_at = now()
+      WHERE id = ${runId} AND status IN ('queued', 'planning', 'running') RETURNING id
+    ), stop_tasks AS (
+      UPDATE tasks SET status = 'cancelled', updated_at = now()
+      WHERE run_id IN (SELECT id FROM cancelled) AND status NOT IN ('done', 'failed', 'cancelled')
+    ), stop_agents AS (
+      UPDATE run_agents SET status = 'idle', activity = 'Ejecución cancelada', task_id = NULL, updated_at = now()
+      WHERE run_id IN (SELECT id FROM cancelled)
+    )
+    INSERT INTO events (run_id, agent, kind, title)
+    SELECT id, 'system', 'status', ${username + " ha cancelado la ejecución"} FROM cancelled
+  `);
 }
 
 export async function addUsage(runId: string, model: string, usage: Usage) {
   const cost = costFor(model, usage);
-  await getDb()
+  const [run] = await getDb()
     .update(runs)
     .set({
       inputTokens: sql`${runs.inputTokens} + ${usage.input_tokens}`,
@@ -98,7 +121,10 @@ export async function addUsage(runId: string, model: string, usage: Usage) {
       cacheWriteTokens: sql`${runs.cacheWriteTokens} + ${usage.cache_creation_input_tokens ?? 0}`,
       costUsd: sql`${runs.costUsd} + ${cost}`,
     })
-    .where(eq(runs.id, runId));
+    .where(eq(runs.id, runId))
+    .returning({ status: runs.status });
+  // A response already paid for is still counted when cancellation wins the race.
+  return !!run && !isTerminal(run.status);
 }
 
 export async function getTask(taskId: string) {
@@ -115,7 +141,7 @@ export async function updateTask(taskId: string, values: Partial<typeof tasks.$i
   await getDb()
     .update(tasks)
     .set({ ...values, updatedAt: new Date() })
-    .where(eq(tasks.id, taskId));
+    .where(and(eq(tasks.id, taskId), ne(tasks.status, "cancelled")));
 }
 
 // ---------- Virtual file system ----------
@@ -165,13 +191,15 @@ export async function getFileSummaries(runId: string) {
 }
 
 export async function writeSiteFile(runId: string, path: string, content: string, agent: AgentName) {
-  await getDb()
-    .insert(runFiles)
-    .values({ runId, path, content, originalContent: null, updatedBy: agent })
-    .onConflictDoUpdate({
-      target: [runFiles.runId, runFiles.path],
-      set: { content, updatedBy: agent, updatedAt: new Date() },
-    });
+  await getDb().execute(sql`
+    WITH active AS (
+      SELECT id FROM runs WHERE id = ${runId} AND status = 'running' FOR SHARE
+    )
+    INSERT INTO run_files (run_id, path, content, updated_by)
+    SELECT id, ${path}, ${content}, ${agent} FROM active
+    ON CONFLICT (run_id, path) DO UPDATE
+    SET content = excluded.content, updated_by = excluded.updated_by, updated_at = now()
+  `);
 }
 
 // ---------- Conversations ----------

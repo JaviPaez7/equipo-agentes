@@ -7,22 +7,11 @@
  * forms cannot submit anywhere.
  */
 import { inlineAssets } from "@/lib/site/inline";
+import { PREVIEW_CSP as CSP } from "@/lib/site/preview-policy";
 import { contentTypeFor, InvalidPathError, normalizePath } from "@/lib/site/paths";
 import { SITE_TEMPLATE } from "@/lib/site/template";
 import { isUuid } from "@/lib/runs/queries";
 import { getSiteFiles } from "@/lib/runs/repo";
-
-const CSP = [
-  "sandbox allow-scripts allow-forms",
-  "default-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self' data:",
-  "form-action 'none'",
-  "base-uri 'none'",
-  "frame-ancestors 'self'",
-].join("; ");
 
 function notFound(message: string) {
   return new Response(
@@ -48,7 +37,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/preview/[runId]
   }
   let content = files?.[path];
   if (!files || content === undefined) return notFound(`La página ${path} no existe en esta versión de la web.`);
-  if (path.endsWith(".html")) content = inlineAssets(path, content, files);
+  if (path.endsWith(".html")) content = inlineAssets(path, content, files, `/preview/${runId}`);
 
   return new Response(content, {
     headers: {

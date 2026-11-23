@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect } from "react";
 import { RichText } from "@/components/rich-text";
 import { StatusBadge } from "@/components/status-badge";
 import { TASK_STATUS } from "@/lib/ui/labels";
@@ -6,6 +9,12 @@ import type { TaskJson } from "@/lib/ui/types";
 const MAX_ATTEMPTS = 3;
 
 export function TaskList({ tasks, planning }: { tasks: TaskJson[]; planning: boolean }) {
+  // The target of the public example link only appears after the API responds.
+  const taskCount = tasks.length;
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (taskCount && id.startsWith("tarea-")) document.getElementById(id)?.scrollIntoView();
+  }, [taskCount]);
   if (tasks.length === 0) {
     return (
       <p className="rounded-xl bg-white p-5 text-sm text-zinc-600 shadow-sm ring-1 ring-zinc-200">
@@ -24,8 +33,12 @@ export function TaskList({ tasks, planning }: { tasks: TaskJson[]; planning: boo
 
 function TaskCard({ task }: { task: TaskJson }) {
   const latest = task.reports[task.reports.length - 1];
+  const final = latest?.checks.some((check) => check.stage === "final");
+  const attempts = task.reports.filter((report) => report.attempt <= task.attempts);
+  const firstFailure = attempts.find((report) => !report.passed);
+  const correction = firstFailure && attempts.find((report) => report.passed && report.attempt > firstFailure.attempt);
   return (
-    <li className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-zinc-200">
+    <li id={`tarea-${task.id}`} className="scroll-mt-6 rounded-xl bg-white p-4 shadow-sm ring-1 ring-zinc-200 target:ring-2 target:ring-violet-500">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-700">
@@ -38,13 +51,23 @@ function TaskCard({ task }: { task: TaskJson }) {
 
       <Pipeline task={task} />
 
+      {firstFailure && correction && (
+        <div className="mt-3 rounded-md border border-amber-200 px-3 py-2 text-sm">
+          <p className="font-medium text-amber-900">Testing pidió cambios en el intento {firstFailure.attempt}</p>
+          <p className="mt-1 text-zinc-700"><RichText text={firstFailure.failures[0]?.problem || firstFailure.summary} /></p>
+          <p className="mt-1 font-medium text-emerald-800">Develop corrigió la tarea y Testing aprobó el intento {correction.attempt}.</p>
+        </div>
+      )}
       {latest && (
         <p className={`mt-3 rounded-md px-3 py-2 text-sm ${latest.passed ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}>
           <span className="font-medium">
-            Testing, intento {latest.attempt}: {latest.passed ? "pasa" : "no pasa"}.
+            {final ? "Verificación final" : `Testing, intento ${latest.attempt}`}: {latest.passed ? "pasa" : "no pasa"}.
           </span>{" "}
           <RichText text={latest.summary} />
         </p>
+      )}
+      {final && !latest.passed && task.lastFeedback && task.lastFeedback !== latest.summary && (
+        <p className="mt-2 whitespace-pre-wrap text-sm text-amber-900"><RichText text={task.lastFeedback} /></p>
       )}
 
       <details className="group mt-3 text-sm">
@@ -73,7 +96,7 @@ function TaskCard({ task }: { task: TaskJson }) {
           {task.reports.map((report) => (
             <div key={report.id} className="rounded-lg ring-1 ring-zinc-200">
               <p className={`rounded-t-lg px-3 py-2 text-xs font-semibold ${report.passed ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                Informe de Testing · intento {report.attempt} · {report.passed ? "PASA" : "NO PASA"}
+                {report.checks.some((check) => check.stage === "final") ? "Verificación final" : `Informe de Testing · intento ${report.attempt}`} · {report.passed ? "PASA" : "NO PASA"}
               </p>
               <div className="space-y-2 px-3 py-2">
                 {report.failures.length > 0 && (
@@ -97,7 +120,10 @@ function TaskCard({ task }: { task: TaskJson }) {
                   {report.checks.map((check, i) => (
                     <li key={i} className={check.passed ? "text-emerald-700" : "text-red-700"} title={check.detail}>
                       {check.passed ? "✔" : "✘"} {check.description}
-                      <span className="text-zinc-400"> · {check.source === "auto" ? "auditoría" : "Testing"}</span>
+                      <span className="text-zinc-500">
+                        {" · "}{check.kind === "browser" ? "Navegador" : check.source === "auto" ? "Auditoría" : "Testing"}
+                        {check.criterionId && ` · criterio ${check.criterionId}`}
+                      </span>
                       {!check.passed && <span className="block whitespace-pre-wrap pl-4 text-zinc-600">{check.detail}</span>}
                     </li>
                   ))}

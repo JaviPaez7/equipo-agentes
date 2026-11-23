@@ -29,7 +29,7 @@ export function FileBrowser({ runId, files }: { runId: string; files: FileJson[]
   const [mode, setMode] = useState<"diff" | "full">("diff");
 
   // Refetch when the selected file changes on the server.
-  const revision = fileMeta ? `${fileMeta.bytes}:${fileMeta.updatedBy}` : "";
+  const revision = fileMeta?.updatedAt;
   useEffect(() => {
     if (!current) return;
     let cancelled = false;

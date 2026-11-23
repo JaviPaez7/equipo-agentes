@@ -1,5 +1,6 @@
 /** Run-level transitions that are not a single agent's job. */
 import {
+  cancelRun,
   getRun,
   getTask,
   initRunAgents,
@@ -15,11 +16,11 @@ import { agentModel } from "./claude";
 
 export async function startRun(runId: string): Promise<{ ok: boolean }> {
   const run = await getRun(runId);
-  if (!run || run.status === "cancelled") return { ok: false };
+  if (!run || isTerminal(run.status)) return { ok: false };
   await initRunFiles(runId);
   await initRunAgents(runId);
   if (!run.startedAt) {
-    await setRunStatus(runId, "planning", { startedAt: new Date() });
+    if (!(await setRunStatus(runId, "planning", { startedAt: new Date() }))) return { ok: false };
     await logEvent({
       runId,
       agent: "system",
@@ -52,14 +53,13 @@ export async function failRun(runId: string, message: string): Promise<void> {
   const run = await getRun(runId);
   if (!run || isTerminal(run.status)) return;
   message = message.replace(/^(Fatal|Retryable)Error:\s*/, "");
-  await setRunStatus(runId, "failed", { error: message.slice(0, 1000), finishedAt: new Date() });
+  if (!(await setRunStatus(runId, "failed", { error: message.slice(0, 1000), finishedAt: new Date() }))) return;
   await logEvent({ runId, agent: "system", kind: "error", title: "La ejecución se ha detenido por un error", detail: message });
   await setAllAgents(runId, "error", "Detenido por un error");
 }
 
 export async function markCancelled(runId: string): Promise<void> {
-  await setAllAgents(runId, "idle", "Ejecución cancelada");
-  await logEvent({ runId, agent: "system", kind: "status", title: "Ejecución cancelada" });
+  await cancelRun(runId, "El equipo");
 }
 
 export async function setTaskFailedEarly(runId: string, taskId: string, reason: string): Promise<void> {

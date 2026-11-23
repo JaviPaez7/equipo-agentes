@@ -3,9 +3,12 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { LocalTime } from "@/components/local-time";
 import { NewRunForm } from "@/components/new-run-form";
+import { OriginalSite } from "@/components/original-site";
 import { StatusBadge } from "@/components/status-badge";
 import { getSession } from "@/lib/auth/session";
 import { listRuns } from "@/lib/runs/queries";
+import { getFeaturedCorrection } from "@/lib/runs/featured";
+import { SITE_TEMPLATE } from "@/lib/site/template";
 import { AGENT_INFO, formatCost, RUN_STATUS } from "@/lib/ui/labels";
 
 const FLOW = [
@@ -19,7 +22,7 @@ const FLOW = [
   },
   {
     agent: "testing" as const,
-    steps: ["Pasa una auditoría automática (HTML, enlaces, accesibilidad)", "Escribe comprobaciones sobre el DOM real", "Aprueba o devuelve los fallos, hasta 3 intentos"],
+    steps: ["Comprueba cada criterio y prueba las interacciones en un navegador", "Devuelve a Develop los fallos concretos", "Repite las pruebas sobre la web final"],
   },
 ];
 
@@ -37,8 +40,11 @@ export default function Home() {
             copia limpia, así que puedes pedir lo que quieras sin romper nada. En el panel verás qué hace cada agente y
             en qué estado está cada tarea, en directo.
           </p>
+          <Suspense fallback={<div className="mt-6 min-h-24" aria-busy="true" />}>
+            <FeaturedCorrection />
+          </Suspense>
         </div>
-        <OriginalSite />
+        <OriginalSite pages={Object.keys(SITE_TEMPLATE).filter((path) => path.endsWith(".html"))} />
       </section>
 
       <section className="mt-10 grid gap-4 md:grid-cols-3" aria-label="Los tres agentes">
@@ -74,7 +80,7 @@ export default function Home() {
           </Suspense>
         </div>
         <div className="lg:col-span-7">
-          <h2 className="text-lg font-semibold text-zinc-900">Ejecuciones recientes</h2>
+          <h2 id="ejecuciones" className="text-lg font-semibold text-zinc-900">Ejecuciones recientes</h2>
           <Suspense fallback={<RunsSkeleton />}>
             <RecentRuns />
           </Suspense>
@@ -84,30 +90,24 @@ export default function Home() {
   );
 }
 
-/** The sample website every run starts from, live and navigable. */
-function OriginalSite() {
-  const src = "/preview/original/index.html";
+async function FeaturedCorrection() {
+  await connection();
+  const match = await getFeaturedCorrection();
+  if (!match) {
+    return (
+      <p className="mt-6 text-sm text-zinc-600">
+        Aún no hay un caso publicado con una corrección verificada.{" "}
+        <a href="#ejecuciones" className="font-medium text-violet-700 underline">Ver ejecuciones recientes</a>
+      </p>
+    );
+  }
   return (
-    <figure className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-zinc-200 lg:col-span-7">
-      <figcaption className="flex items-center gap-3 border-b border-zinc-100 px-4 py-2.5 text-sm">
-        <span className="flex gap-1.5" aria-hidden="true">
-          <span className="size-2.5 rounded-full bg-zinc-200" />
-          <span className="size-2.5 rounded-full bg-zinc-200" />
-          <span className="size-2.5 rounded-full bg-zinc-200" />
-        </span>
-        <span className="text-zinc-600">Web de partida · Panadería La Espiga</span>
-        <a href={src} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium text-violet-700 hover:underline">
-          Abrir en una pestaña ↗
-        </a>
-      </figcaption>
-      <iframe
-        src={src}
-        title="Web de partida: Panadería La Espiga"
-        sandbox="allow-scripts allow-forms"
-        loading="lazy"
-        className="h-80 w-full bg-white sm:h-[26rem]"
-      />
-    </figure>
+    <div className="mt-6">
+      <Link href={`/runs/${match.runId}#tarea-${match.taskId}`} className="inline-block rounded-lg bg-violet-700 px-4 py-3 text-sm font-semibold text-white hover:bg-violet-800">
+        Ver cómo el equipo corrigió un fallo →
+      </Link>
+      <p className="mt-2 text-sm text-zinc-600">Caso real, sin iniciar sesión. Testing pidió cambios en el intento {match.failedAttempt} y aprobó el {match.passedAttempt}.</p>
+    </div>
   );
 }
 

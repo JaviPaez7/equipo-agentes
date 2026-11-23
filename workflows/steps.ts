@@ -11,6 +11,7 @@ import {
   beginTesting as beginTestingImpl,
   forceFailedVerdict as forceFailedVerdictImpl,
   testingTurn as testingTurnImpl,
+  validateFinalSite as validateFinalSiteImpl,
 } from "@/lib/agents/testing";
 
 export async function startRun(runId: string) {
@@ -61,6 +62,11 @@ export async function finishTask(runId: string, taskId: string, passed: boolean)
 export async function summarizeRun(runId: string) {
   "use step";
   return summarizeRunImpl(runId);
+}
+
+export async function validateFinalSite(runId: string, taskId: string) {
+  "use step";
+  return validateFinalSiteImpl(runId, taskId);
 }
 
 export async function markCancelled(runId: string) {

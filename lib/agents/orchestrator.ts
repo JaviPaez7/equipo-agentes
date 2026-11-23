@@ -1,13 +1,14 @@
 /** Orchestrator: turns the user's request into tasks, then writes the closing summary. */
-import { asc, inArray } from "drizzle-orm";
+import { asc, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { tasks as tasksTable, testReports } from "@/lib/db/schema";
+import { testReports } from "@/lib/db/schema";
 import {
   addUsage,
   getRun,
   getSiteFiles,
   getTasks,
+  isTerminal,
   logEvent,
   setAgent,
   setAllAgents,
@@ -59,15 +60,18 @@ const PLAN_JSON_SCHEMA = {
   },
 } as const;
 
-export async function planTasks(runId: string): Promise<{ taskIds: string[]; rejected: boolean }> {
+const stoppedPlan = { taskIds: [] as string[], rejected: false, cancelled: true };
+
+export async function planTasks(runId: string): Promise<{ taskIds: string[]; rejected: boolean; cancelled?: boolean }> {
   const run = await getRun(runId);
   if (!run) throw new Error(`Ejecución ${runId} no encontrada`);
+  if (isTerminal(run.status)) return stoppedPlan;
 
   // A retried step must not plan twice.
   const existing = await getTasks(runId);
   if (existing.length > 0) return { taskIds: existing.map((t) => t.id), rejected: false };
 
-  await setRunStatus(runId, "planning");
+  if (!(await setRunStatus(runId, "planning"))) return stoppedPlan;
   await setAgent(runId, "orchestrator", "working", "Analizando la petición y planificando tareas", {
     countAction: true,
   });
@@ -85,7 +89,7 @@ export async function planTasks(runId: string): Promise<{ taskIds: string[]; rej
       },
     ],
   });
-  await addUsage(runId, agentModel(), response.usage);
+  if (!(await addUsage(runId, agentModel(), response.usage))) return stoppedPlan;
 
   const thinking = thinkingSummary(response);
   if (thinking) {
@@ -108,21 +112,26 @@ export async function planTasks(runId: string): Promise<{ taskIds: string[]; rej
   }
 
   const chosen = plan.tasks.slice(0, MAX_TASKS);
-  const inserted = await getDb()
-    .insert(tasksTable)
-    .values(
-      chosen.map((task, i) => ({
-        runId,
-        position: i + 1,
-        title: task.title.slice(0, 200),
-        developBrief: task.develop_brief,
-        testPlan: task.test_plan.slice(0, 8),
-      })),
+  const newTasks = chosen.map((task, i) => ({
+    position: i + 1, title: task.title.slice(0, 200),
+    develop_brief: task.develop_brief, test_plan: task.test_plan.slice(0, 8),
+  }));
+  // Cancellation and plan publication both lock the same run row. An older
+  // model response must never publish tasks after the user has stopped the run.
+  const { rows: inserted } = await getDb().execute<{ id: string; position: number }>(sql`
+    WITH started AS (
+      UPDATE runs SET status = 'running', analysis = ${plan.analysis}
+      WHERE id = ${runId} AND status = 'planning' RETURNING id
     )
-    .returning({ id: tasksTable.id, position: tasksTable.position });
+    INSERT INTO tasks (run_id, position, title, develop_brief, test_plan)
+    SELECT started.id, task.position, task.title, task.develop_brief, task.test_plan
+    FROM started CROSS JOIN jsonb_to_recordset(${JSON.stringify(newTasks)}::jsonb)
+      AS task(position integer, title text, develop_brief text, test_plan jsonb)
+    RETURNING id, position
+  `);
+  if (!inserted.length) return stoppedPlan;
   inserted.sort((a, b) => a.position - b.position);
 
-  await setRunStatus(runId, "running", { analysis: plan.analysis });
   await logEvent({
     runId,
     agent: "orchestrator",
@@ -146,15 +155,16 @@ export async function planTasks(runId: string): Promise<{ taskIds: string[]; rej
 }
 
 async function reject(runId: string, reason: string) {
-  await setRunStatus(runId, "rejected", { summary: reason, finishedAt: new Date() });
+  if (!(await setRunStatus(runId, "rejected", { summary: reason, finishedAt: new Date() }))) return stoppedPlan;
   await logEvent({ runId, agent: "orchestrator", kind: "status", title: "Petición rechazada", detail: reason });
   await setAllAgents(runId, "done", "Sin tareas que hacer");
   return { taskIds: [], rejected: true };
 }
 
-export async function summarizeRun(runId: string): Promise<void> {
+export async function summarizeRun(runId: string): Promise<"finished" | "cancelled"> {
   const run = await getRun(runId);
-  if (!run) return;
+  if (!run || run.status === "cancelled") return "cancelled";
+  if (isTerminal(run.status)) return "finished";
   const all = await getTasks(runId);
   const failed = all.filter((t) => t.status !== "done");
 
@@ -185,7 +195,7 @@ export async function summarizeRun(runId: string): Promise<void> {
       if (report) {
         const passing = report.checks.filter((c) => c.passed).length;
         lines.push(
-          `  Testing, intento ${report.attempt}: ${report.passed ? "pasa" : "no pasa"} (${passing} de ${report.checks.length} comprobaciones en verde). ${report.summary}`,
+          `  Testing, ${report.checks.some((check) => check.stage === "final") ? "validación final" : `intento ${report.attempt}`}: ${report.passed ? "pasa" : "no pasa"} (${passing} de ${report.checks.length} comprobaciones en verde). ${report.summary}`,
         );
       } else {
         lines.push("  Testing no llegó a emitir un veredicto.");
@@ -205,19 +215,21 @@ export async function summarizeRun(runId: string): Promise<void> {
       system: SUMMARY_SYSTEM,
       messages: [{ role: "user", content: `Petición: "${run.request}"\n\nResultado:\n${facts}` }],
     });
-    await addUsage(runId, agentModel(), response.usage);
+    if (!(await addUsage(runId, agentModel(), response.usage))) return "cancelled";
     summary = responseText(response) || fallbackSummary(all.length, failed.length);
   } catch {
     // The summary is a nicety: never fail a finished run because of it.
     summary = fallbackSummary(all.length, failed.length);
   }
 
-  await setRunStatus(runId, failed.length === 0 ? "completed" : "completed_with_failures", {
+  const finished = await setRunStatus(runId, failed.length === 0 ? "completed" : "completed_with_failures", {
     summary,
     finishedAt: new Date(),
   });
+  if (!finished) return "cancelled";
   await logEvent({ runId, agent: "orchestrator", kind: "message", title: "Resumen final", detail: summary });
   await setAllAgents(runId, "done", "Trabajo terminado");
+  return "finished";
 }
 
 function fallbackSummary(total: number, failed: number) {

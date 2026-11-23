@@ -3,6 +3,7 @@
 Tres agentes de IA (**Orquestador**, **Develop** y **Testing**) que trabajan juntos para aplicar cambios a una web. Le pides algo como «añade una página de contacto a esta web» y en pantalla ves, en directo, cómo el Orquestador divide la petición en tareas, cómo Develop edita los archivos y cómo Testing comprueba el resultado y le devuelve lo que falla hasta que todo pasa.
 
 - **App:** <https://equipo-agentes-delta.vercel.app>
+- [Ver el fallo que encontró Testing y la corrección de Develop](https://equipo-agentes-delta.vercel.app/runs/eb332bb7-9359-4314-a20a-031afa245b28). Es una ejecución real conservada de desarrollo. La página de contacto existía, pero el menú de la panadería todavía no llevaba a ella. Se pueden abrir los dos informes sin iniciar sesión.
 - **Usuario de prueba:** se facilita en la entrega. Ver ejecuciones es público; lanzar una nueva requiere iniciar sesión.
 
 ## Qué hace cada agente
@@ -13,7 +14,7 @@ Tres agentes de IA (**Orquestador**, **Develop** y **Testing**) que trabajan jun
 | **Develop** | Una tarea y, si es un reintento, el informe de Testing | Edita los archivos de la web con la herramienta de edición de texto de Claude (`view`, `create`, `str_replace`, `insert`) | Los archivos cambiados y un resumen de lo que hizo |
 | **Testing** | La tarea, su plan de pruebas y la web resultante | Pasa una auditoría automática y escribe comprobaciones propias sobre el DOM real | «Pasa» o «no pasa» con la lista de fallos, el problema y una sugerencia para cada uno |
 
-Si Testing no aprueba, la tarea vuelve a Develop con el informe. Cada tarea tiene hasta **3 intentos**. Al final el Orquestador resume la ejecución.
+Si Testing pide cambios, la tarea vuelve a Develop con el informe. Cada tarea tiene hasta **3 intentos**. Al terminar el desarrollo, Testing repite las comprobaciones de las tareas aprobadas sobre la versión final. El Orquestador incorpora las regresiones al resultado de la ejecución.
 
 ## Arquitectura
 
@@ -27,7 +28,8 @@ flowchart LR
     T -->|no pasa, intento < 3| D
     T -->|pasa| N{¿más tareas?}
     N -->|sí| D
-    N -->|no| S[Resumen]
+    N -->|no| R[Verificación sobre la web final]
+    R --> S[Resumen]
     WF <--> DB[(Neon Postgres)]
     UI[Panel en directo] -->|sondeo cada 1,5 s| DB
 ```
@@ -44,7 +46,7 @@ flowchart LR
 
 ### Cómo verifica Testing
 
-Testing no aprueba «a ojo». Su veredicto se apoya en dos tipos de comprobaciones:
+El informe de Testing enlaza los criterios numerados del plan con las pruebas que los acreditan.
 
 1. **Auditoría automática (determinista):**
    - HTML válido con [html-validate](https://html-validate.org/), con reglas de accesibilidad: etiquetas en los campos, texto alternativo y nombre accesible en enlaces y botones;
@@ -54,7 +56,9 @@ Testing no aprueba «a ojo». Su veredicto se apoya en dos tipos de comprobacion
    - errores de sintaxis en JS y llaves descompensadas en CSS.
 2. **Comprobaciones del propio agente** sobre el DOM real: que exista un selector, que un texto aparezca, que un atributo valga algo, que una página enlace a otra, etc.
 
-El sistema rechaza un «pasa» si no hay comprobaciones propias, si alguna falla o si la auditoría está en rojo. También rechaza un «no pasa» sin fallos concretos. El informe que recibe Develop lleva cada fallo con su criterio, el problema y una sugerencia.
+3. **Interacciones en Chromium con Playwright.** Testing puede navegar, rellenar campos, seleccionar opciones y pulsar controles. Comprueba el resultado observable en móvil, escritorio o ambos. El navegador usa una copia aislada de los archivos de la ejecución.
+
+Un aprobado requiere evidencia de todos los criterios, una auditoría en verde y pruebas de navegador para los criterios de interacción. Las pruebas se guardan con el informe y vuelven a ejecutarse sobre la web final. Si falla alguna, el panel identifica la tarea y la regresión.
 
 ## Stack
 
@@ -96,7 +100,7 @@ La cuarta fila sirvió para corregir un fallo real. El Orquestador separaba «cr
 
 ## Puesta en marcha en local
 
-Requisitos: Node.js 22 o superior y una base de datos Postgres (por ejemplo, una rama de Neon).
+Utiliza Node.js 22.17 o posterior compatible con las dependencias, una base de datos Postgres (por ejemplo, una rama de Neon) y un navegador para las pruebas de interacción. En Windows se usa Edge. En macOS o Linux, tras instalar las dependencias, ejecuta `npx playwright-core install chromium` (en Linux puedes añadir `--with-deps`). Vercel recibe Chromium con el despliegue.
 
 ```bash
 npm install
@@ -136,9 +140,11 @@ npm run build
 3. En *Settings → Environment Variables*, marca **Enable access to System Environment Variables**. Workflows detecta que está en Vercel por `VERCEL_DEPLOYMENT_ID`; sin esa casilla usa el almacenamiento local, que en Vercel es de solo lectura, y todas las ejecuciones fallan antes del primer paso.
 4. Ejecuta `npm run db:migrate` y `npm run db:seed` contra la base de datos de producción, con `ENV_FILE` apuntando a un archivo con sus variables.
 
-## Cómo se usó Claude Code
+## Cómo se usaron Claude Code y Codex
 
-Todo el proyecto se programó con **Claude Code** (Claude Opus 5.5), dirigido por mí. Así lo usamos:
+Dirigí la implementación inicial con **Claude Code** y pedí a **Codex** una revisión de la demo publicada. A partir de esa revisión, Codex implementó la cobertura por criterio y la repetición final, probó las interacciones en Chromium, corrigió la cancelación y la reserva simultánea de cupo y sincronizó la navegación del visor. La primera ejecución que se conserva en la demo muestra el fallo de la página huérfana que encontramos durante el desarrollo.
+
+Trabajo inicial con Claude Code:
 
 - **Análisis y decisiones.** Claude Code leyó el enunciado y comprobó en la documentación de Vercel sus restricciones:
   - el plan gratuito de AI Gateway no incluye modelos de Claude;
@@ -160,7 +166,7 @@ Todo el proyecto se programó con **Claude Code** (Claude Opus 5.5), dirigido po
 ## Limitaciones conocidas
 
 - Los agentes trabajan sobre una web estática de ejemplo (HTML, CSS y JS), no sobre un repositorio arbitrario. El siguiente paso natural sería conectarlo a un repositorio de GitHub y abrir un PR por ejecución.
-- Testing comprueba la estructura y el DOM, pero no ejecuta un navegador real, así que no valida el aspecto visual ni las interacciones complejas de JS.
+- Testing verifica las interacciones descritas en el plan. La revisión visual del diseño y los flujos que dependen de servicios externos quedan fuera de la demo.
 - El panel se actualiza consultando cada 1,5 s. Con muchos espectadores convendría pasar a *streaming*.
 
 ## Estructura

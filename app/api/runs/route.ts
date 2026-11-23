@@ -6,9 +6,9 @@ import { agentModel } from "@/lib/agents/claude";
 import { getSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { runs } from "@/lib/db/schema";
-import { checkRunLimits, MAX_REQUEST_LENGTH } from "@/lib/runs/limits";
+import { reserveRun, MAX_REQUEST_LENGTH } from "@/lib/runs/limits";
 import { listRuns } from "@/lib/runs/queries";
-import { initRunAgents } from "@/lib/runs/repo";
+import { initRunAgents, setRunStatus } from "@/lib/runs/repo";
 import { agentTeamWorkflow } from "@/workflows/agent-team";
 
 const Body = z.object({
@@ -29,26 +29,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Petición no válida." }, { status: 400 });
   }
 
-  const limitError = await checkRunLimits(session.userId);
-  if (limitError) return NextResponse.json({ error: limitError }, { status: 429 });
-
+  const run = await reserveRun(session.userId, parsed.data.request, agentModel());
+  if ("error" in run) return NextResponse.json({ error: run.error }, { status: 429 });
   const db = getDb();
-  const [run] = await db
-    .insert(runs)
-    .values({ request: parsed.data.request, model: agentModel(), createdBy: session.userId })
-    .returning({ id: runs.id });
-  await initRunAgents(run.id);
-
+  let workflowRun;
   try {
-    const workflowRun = await start(agentTeamWorkflow, [run.id]);
-    await db.update(runs).set({ workflowRunId: workflowRun.runId }).where(eq(runs.id, run.id));
+    await initRunAgents(run.id);
+    workflowRun = await start(agentTeamWorkflow, [run.id]);
   } catch (error) {
-    await db
-      .update(runs)
-      .set({ status: "failed", error: "No se pudo arrancar el workflow.", finishedAt: new Date() })
-      .where(eq(runs.id, run.id));
+    await setRunStatus(run.id, "failed", { error: "No se pudo arrancar el workflow.", finishedAt: new Date() });
     console.error("workflow start failed", error);
     return NextResponse.json({ error: "No se pudo arrancar la ejecución." }, { status: 500 });
+  }
+  // A started workflow owns this run. Losing its optional cancellation handle
+  // cannot move the run to 'failed': its durable DB cancellation guard still applies.
+  try {
+    const [saved] = await db.update(runs).set({ workflowRunId: workflowRun.runId })
+      .where(eq(runs.id, run.id)).returning({ status: runs.status });
+    if (saved?.status === "cancelled") await workflowRun.cancel();
+  } catch {
+    console.error("No se pudo registrar o cancelar el workflow ya iniciado.", run.id);
   }
 
   return NextResponse.json({ id: run.id }, { status: 201 });
