@@ -60,7 +60,7 @@ El sistema rechaza un «pasa» si no hay comprobaciones propias, si alguna falla
 
 - **Next.js 16** (App Router, Cache Components) en **Vercel**
 - **Vercel Workflows** para la orquestación durable
-- **Claude Opus 5.5** con el SDK oficial de Anthropic:
+- **Claude Sonnet 5.5** con el SDK oficial de Anthropic (también funciona con Opus 5.5 cambiando `AGENT_MODEL`):
   - razonamiento adaptativo con resúmenes visibles;
   - salida JSON estructurada para el plan;
   - herramienta de edición de texto para Develop y herramientas estrictas para Testing;
@@ -72,16 +72,19 @@ El modelo y el esfuerzo de cada agente se configuran por variables de entorno.
 
 ### Tiempos y coste medidos
 
-Medidos con Claude Opus 5.5 el 23 de noviembre de 2026, en producción (Vercel) y en local:
+Medidos el 23 de noviembre de 2026, en producción (Vercel) y en local:
 
-| Petición | Dónde | Tareas | Intentos | Duración | Coste |
-| --- | --- | --- | --- | --- | --- |
-| «Añade una página de contacto a esta web» | Producción | 1 | 1 | 1 min 5 s | 0,32 $ |
-| Página de contacto con formulario y horario | Local | 1 | 1 | 1 min 14 s | 0,34 $ |
-| La misma, antes de afinar el reparto de tareas | Local | 4 | 5 | 3 min 16 s | 0,92 $ |
-| «Escríbeme un poema sobre el mar» (rechazada) | Local | 0 | — | 5 s | 0,03 $ |
+| Petición | Modelo | Dónde | Tareas | Intentos | Duración | Coste |
+| --- | --- | --- | --- | --- | --- | --- |
+| «Añade una página de contacto a esta web» | Sonnet 5.5 | Local | 1 | 1 | 44 s | 0,14 $ |
+| «Añade una página de contacto a esta web» | Opus 5.5 | Producción | 1 | 1 | 1 min 5 s | 0,32 $ |
+| Página de contacto con formulario y horario | Opus 5.5 | Local | 1 | 1 | 1 min 14 s | 0,34 $ |
+| La misma, antes de afinar el reparto de tareas | Opus 5.5 | Local | 4 | 5 | 3 min 16 s | 0,92 $ |
+| «Escríbeme un poema sobre el mar» (rechazada) | Opus 5.5 | Local | 0 | — | 5 s | 0,03 $ |
 
-La tercera fila sirvió para corregir un fallo real. El Orquestador separaba «crear la página» de «enlazarla desde el menú», así que la primera tarea siempre suspendía la auditoría por dejar una página sin enlazar, y la segunda se quedaba sin nada que hacer. Ahora el Orquestador conoce las reglas de la auditoría y agrupa lo que tiene que ir junto.
+Con Sonnet 5.5, la misma petición sale aprobada a la primera (27 comprobaciones en verde) en menos tiempo y por menos de la mitad, así que es el modelo por defecto. Opus 5.5 sigue disponible con `AGENT_MODEL=claude-opus-5-5`.
+
+La cuarta fila sirvió para corregir un fallo real. El Orquestador separaba «crear la página» de «enlazarla desde el menú», así que la primera tarea siempre suspendía la auditoría por dejar una página sin enlazar, y la segunda se quedaba sin nada que hacer. Ahora el Orquestador conoce las reglas de la auditoría y agrupa lo que tiene que ir junto.
 
 ## Seguridad y costes
 
@@ -121,7 +124,7 @@ npm run build
 | `DATABASE_URL` | Sí | Cadena de conexión de Postgres (Neon) |
 | `AUTH_SECRET` | Sí | Firma de la cookie de sesión (32 caracteres o más) |
 | `ANTHROPIC_API_KEY` | Sí | Clave de la API de Claude |
-| `AGENT_MODEL` | No | Modelo de los tres agentes (por defecto, `claude-opus-5-5`) |
+| `AGENT_MODEL` | No | Modelo de los tres agentes (por defecto, `claude-sonnet-5-5`) |
 | `AGENT_EFFORT_ORCHESTRATOR` / `_DEVELOP` / `_TESTING` | No | `low`, `medium` o `high` (por defecto, `medium`, `medium` y `low`) |
 | `MAX_RUNS_PER_USER_PER_DAY` / `MAX_RUNS_PER_DAY` | No | Límites de gasto (por defecto, 10 y 30) |
 | `SEED_USERNAME` / `SEED_PASSWORD` | Solo para `db:seed` | Usuario de prueba |

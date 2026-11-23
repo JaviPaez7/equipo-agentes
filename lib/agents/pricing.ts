@@ -21,7 +21,7 @@ const PRICES: Record<string, Price> = {
 };
 
 export function costFor(model: string, usage: Usage): number {
-  const price = PRICES[model] ?? PRICES["claude-opus-5-5"];
+  const price = PRICES[model] ?? PRICES["claude-sonnet-5-5"];
   const million = 1_000_000;
   return (
     (usage.input_tokens * price.input +

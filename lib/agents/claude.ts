@@ -1,7 +1,7 @@
 /**
  * Thin wrapper over the Anthropic SDK shared by the three agents.
  *
- * - The model is configurable with AGENT_MODEL (default Claude Opus 5.5).
+ * - The model is configurable with AGENT_MODEL (default Claude Sonnet 5.5).
  * - Server-side refusal fallbacks are on ("default" routing).
  * - Thinking is adaptive with summaries, so the UI can show what each agent is reasoning about.
  * - Errors are translated into Workflow retry semantics: transient errors retry, the rest fail fast.
@@ -25,7 +25,7 @@ const DEFAULT_EFFORT: Record<AgentName, Effort> = {
 };
 
 export function agentModel(): string {
-  return process.env.AGENT_MODEL?.trim() || "claude-opus-5-5";
+  return process.env.AGENT_MODEL?.trim() || "claude-sonnet-5-5";
 }
 
 export function effortFor(agent: AgentName): Effort {
