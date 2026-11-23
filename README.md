@@ -72,15 +72,16 @@ El modelo y el esfuerzo de cada agente se configuran por variables de entorno.
 
 ### Tiempos y coste medidos
 
-Medidos en local con Claude Opus 5.5 el 23 de noviembre de 2026:
+Medidos con Claude Opus 5.5 el 23 de noviembre de 2026, en producción (Vercel) y en local:
 
-| Petición | Tareas | Intentos | Duración | Coste |
-| --- | --- | --- | --- | --- |
-| Página de contacto con formulario y horario | 1 | 1 | 1 min 14 s | 0,34 $ |
-| La misma, antes de afinar el reparto de tareas | 4 | 5 | 3 min 16 s | 0,92 $ |
-| «Escríbeme un poema sobre el mar» (rechazada) | 0 | — | 5 s | 0,03 $ |
+| Petición | Dónde | Tareas | Intentos | Duración | Coste |
+| --- | --- | --- | --- | --- | --- |
+| «Añade una página de contacto a esta web» | Producción | 1 | 1 | 1 min 5 s | 0,32 $ |
+| Página de contacto con formulario y horario | Local | 1 | 1 | 1 min 14 s | 0,34 $ |
+| La misma, antes de afinar el reparto de tareas | Local | 4 | 5 | 3 min 16 s | 0,92 $ |
+| «Escríbeme un poema sobre el mar» (rechazada) | Local | 0 | — | 5 s | 0,03 $ |
 
-La segunda fila sirvió para corregir un fallo real. El Orquestador separaba «crear la página» de «enlazarla desde el menú», así que la primera tarea siempre suspendía la auditoría por dejar una página sin enlazar, y la segunda se quedaba sin nada que hacer. Ahora el Orquestador conoce las reglas de la auditoría y agrupa lo que tiene que ir junto.
+La tercera fila sirvió para corregir un fallo real. El Orquestador separaba «crear la página» de «enlazarla desde el menú», así que la primera tarea siempre suspendía la auditoría por dejar una página sin enlazar, y la segunda se quedaba sin nada que hacer. Ahora el Orquestador conoce las reglas de la auditoría y agrupa lo que tiene que ir junto.
 
 ## Seguridad y costes
 
