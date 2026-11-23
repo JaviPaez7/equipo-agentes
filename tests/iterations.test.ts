@@ -42,3 +42,20 @@ describe("previewBase", () => {
     expect(previewBase(id, "before")).toBe(`/preview/${BEFORE_PREFIX}${id}`);
   });
 });
+
+describe("checkBreakdown", () => {
+  it("separates audit, static and real-browser checks for the closing summary", async () => {
+    const { checkBreakdown } = await import("@/lib/agents/orchestrator");
+    const checks = [
+      ...Array.from({ length: 15 }, () => ({ source: "auto" })),
+      ...Array.from({ length: 6 }, () => ({ source: "agent", kind: "static" })),
+      ...Array.from({ length: 2 }, () => ({ source: "agent", kind: "browser" })),
+    ];
+    expect(checkBreakdown(checks)).toBe("15 de auditoría automática, 6 estáticas de Testing y 2 en navegador real");
+  });
+
+  it("counts historical checks without a kind as static", async () => {
+    const { checkBreakdown } = await import("@/lib/agents/orchestrator");
+    expect(checkBreakdown([{ source: "agent" }])).toBe("0 de auditoría automática, 1 estáticas de Testing y 0 en navegador real");
+  });
+});

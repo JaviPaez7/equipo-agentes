@@ -64,6 +64,17 @@ const PLAN_JSON_SCHEMA = {
 const stoppedPlan = { taskIds: [] as string[], rejected: false, cancelled: true };
 
 /**
+ * How a report's checks split by kind, so the summary can tell static checks
+ * from behaviour actually exercised in a browser instead of guessing.
+ */
+export function checkBreakdown(checks: { source: string; kind?: string }[]): string {
+  const audit = checks.filter((c) => c.source === "auto").length;
+  const browser = checks.filter((c) => c.source !== "auto" && c.kind === "browser").length;
+  const fixed = checks.length - audit - browser;
+  return `${audit} de auditoría automática, ${fixed} estáticas de Testing y ${browser} en navegador real`;
+}
+
+/**
  * Earlier iterations, so the Orchestrator knows the site already carries those
  * changes and plans only the new request. The current files remain the source
  * of truth; the summaries only explain how the site got there.
@@ -214,8 +225,14 @@ export async function summarizeRun(runId: string): Promise<"finished" | "cancell
       if (report) {
         const passing = report.checks.filter((c) => c.passed).length;
         lines.push(
-          `  Testing, ${report.checks.some((check) => check.stage === "final") ? "validación final" : `intento ${report.attempt}`}: ${report.passed ? "pasa" : "no pasa"} (${passing} de ${report.checks.length} comprobaciones en verde). ${report.summary}`,
+          `  Testing, ${report.checks.some((check) => check.stage === "final") ? "validación final" : `intento ${report.attempt}`}: ${report.passed ? "pasa" : "no pasa"} (${passing} de ${report.checks.length} comprobaciones en verde; ${checkBreakdown(report.checks)}). ${report.summary}`,
         );
+        const browser = report.checks.filter((c) => c.kind === "browser");
+        if (browser.length > 0) {
+          lines.push(
+            `  Probado en un navegador real: ${browser.map((c) => `${c.passed ? "✔" : "✘"} ${c.description}`).join("; ").slice(0, 900)}`,
+          );
+        }
       } else {
         lines.push("  Testing no llegó a emitir un veredicto.");
       }
