@@ -6,7 +6,10 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   serverExternalPackages: ["playwright-core", "@sparticuz/chromium"],
   outputFileTracingIncludes: {
-    "/.well-known/workflow/v1/flow": ["./node_modules/@sparticuz/chromium/bin/**"],
+    "/.well-known/workflow/v1/flow": [
+      "./node_modules/@sparticuz/chromium/**/*",
+      "./node_modules/playwright-core/**/*",
+    ],
   },
   turbopack: {
     rules: {

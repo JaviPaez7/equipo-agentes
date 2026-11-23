@@ -6,7 +6,7 @@ import { normalizePath } from "./paths";
 import { PREVIEW_CSP } from "./preview-policy";
 
 const actionKinds = ["click", "fill", "select", "press"] as const;
-const assertionKinds = ["visible", "hidden", "text_contains", "attribute_equals", "value_equals", "valid", "invalid"] as const;
+const assertionKinds = ["visible", "hidden", "text_contains", "attribute_equals", "value_equals", "valid", "invalid", "in_viewport", "no_horizontal_overflow"] as const;
 const viewports = ["mobile", "desktop", "both"] as const;
 const simpleText = z.string().trim().min(1).max(320);
 const nullableText = z.string().max(500).nullable();
@@ -103,20 +103,25 @@ async function assertResult(page: Page, a: Assertion) {
       case "value_equals": return (el as HTMLInputElement).value === value;
       case "valid": return el.matches(":valid");
       case "invalid": return el.matches(":invalid");
+      case "in_viewport": {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.top >= 0 &&
+          rect.right <= innerWidth && rect.bottom <= innerHeight;
+      }
+      case "no_horizontal_overflow": return document.documentElement.scrollWidth <= document.documentElement.clientWidth;
       default: return false;
     }
   }, a, { timeout: 1700 });
 }
 
 async function runScenario(page: Page, spec: BrowserCheck, size: "mobile" | "desktop") {
-  await page.setViewportSize(dimensions[size]);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message.slice(0, 200)));
   await page.goto(ORIGIN + "/" + normalizePath(spec.page), { waitUntil: "domcontentloaded", timeout: 3000 });
   for (const action of spec.actions) {
     const target = page.locator("css=" + action.selector);
     switch (action.kind) {
-      case "click": await target.click(); break;
+      case "click": if (size === "mobile") await target.tap(); else await target.click(); break;
       case "fill": await target.fill(action.value!); break;
       case "select": await target.selectOption(action.value!); break;
       case "press": await target.press(action.value!); break;
@@ -138,15 +143,22 @@ export async function runBrowserChecks(files: SiteFiles, specs: BrowserCheck[]):
   try {
     // The sandboxed origin and CSP already deny workers. Playwright's optional
     // registration shim itself throws when it reads navigator.serviceWorker on this origin.
-    const context = await browser.newContext({ acceptDownloads: false });
-    context.setDefaultTimeout(1800);
-    await serveFiles(context, files);
+    const contexts: Partial<Record<"mobile" | "desktop", BrowserContext>> = {};
     const results: CheckResult[] = [];
     for (const spec of specs) {
       const sizes = spec.viewport === "both" ? (["mobile", "desktop"] as const) : [spec.viewport];
       let detail = "";
       let passed = true;
       for (const size of sizes) {
+        let context = contexts[size];
+        if (!context) {
+          context = await browser.newContext({
+            viewport: dimensions[size], isMobile: size === "mobile", hasTouch: size === "mobile", acceptDownloads: false,
+          });
+          context.setDefaultTimeout(1800);
+          await serveFiles(context, files);
+          contexts[size] = context;
+        }
         const page = await context.newPage();
         try {
           await runScenario(page, spec, size);
