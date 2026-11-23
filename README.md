@@ -129,7 +129,7 @@ npm run build
 
 1. Importa el repositorio en Vercel (se detecta como Next.js).
 2. Añade `DATABASE_URL`, `AUTH_SECRET` y `ANTHROPIC_API_KEY` en *Settings → Environment Variables*.
-3. Activa la exposición de las variables de entorno del sistema de Vercel (*System Environment Variables*), porque Workflows las necesita.
+3. En *Settings → Environment Variables*, marca **Enable access to System Environment Variables**. Workflows detecta que está en Vercel por `VERCEL_DEPLOYMENT_ID`; sin esa casilla usa el almacenamiento local, que en Vercel es de solo lectura, y todas las ejecuciones fallan antes del primer paso.
 4. Ejecuta `npm run db:migrate` y `npm run db:seed` contra la base de datos de producción, con `ENV_FILE` apuntando a un archivo con sus variables.
 
 ## Cómo se usó Claude Code
