@@ -66,6 +66,16 @@ export function RunDashboard({ runId }: { runId: string }) {
             <h1 className="mt-1 text-xl font-semibold text-zinc-900">“{run.request}”</h1>
           </div>
           <div className="flex items-center gap-2">
+            {!active && changedFiles > 0 && (
+              <Link
+                href={`/demo/${runId}`}
+                target="_blank"
+                className="rounded-md px-2.5 py-1 text-sm font-medium text-violet-700 ring-1 ring-violet-200 hover:bg-violet-50"
+                title="Página limpia con la propuesta, para enseñársela a un cliente"
+              >
+                Demo para el cliente ↗
+              </Link>
+            )}
             <StatusBadge {...RUN_STATUS[run.status]} />
             {active && canCancel && (
               <button

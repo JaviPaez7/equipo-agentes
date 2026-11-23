@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import type { FileJson } from "@/lib/ui/types";
 import { previewBase } from "@/lib/site/preview-policy";
-import { PreviewFrame, type PreviewLocation } from "./preview-frame";
+import { type Device, DevicePreviewFrame, DeviceToggle } from "./device-preview";
+import type { PreviewLocation } from "./preview-frame";
 
 /**
  * Shows the run's website in a sandboxed iframe (no same-origin access, so
@@ -32,6 +33,7 @@ export function SitePreview({
 
   const [picked, setPicked] = useState<PreviewLocation | null>(null);
   const [version, setVersion] = useState<"run" | "before">("run");
+  const [device, setDevice] = useState<Device>("desktop");
   const wanted = picked?.page ?? focus?.path ?? "index.html";
   const current = pages.includes(wanted) ? wanted : "index.html";
   // A page this run created does not exist in the version it started from.
@@ -61,6 +63,7 @@ export function SitePreview({
             ))}
           </select>
         </label>
+        <DeviceToggle device={device} onChange={setDevice} />
         <div className="flex rounded-md bg-zinc-100 p-0.5 text-xs" role="group" aria-label="Versión">
           {(["run", "before"] as const).map((v) => (
             <button
@@ -84,14 +87,15 @@ export function SitePreview({
           Abrir en una pestaña ↗
         </a>
       </div>
-      <PreviewFrame
+      <DevicePreviewFrame
+        device={device}
         base={base}
         pages={visiblePages}
         location={location}
         revision={version === "run" ? contentKey : undefined}
         onNavigate={setPicked}
         title={`Vista previa de ${shown}`}
-        className={`w-full bg-white ${frameClassName}`}
+        className={frameClassName}
       />
     </div>
   );

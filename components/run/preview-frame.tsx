@@ -8,7 +8,7 @@ export interface PreviewLocation {
   suffix: string;
 }
 
-export function PreviewFrame({ base, pages, location, revision, onNavigate, title, className }: {
+export function PreviewFrame({ base, pages, location, revision, onNavigate, title, className, style }: {
   base: string;
   pages: readonly string[];
   location: PreviewLocation;
@@ -16,6 +16,7 @@ export function PreviewFrame({ base, pages, location, revision, onNavigate, titl
   onNavigate: (location: PreviewLocation) => void;
   title: string;
   className: string;
+  style?: React.CSSProperties;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const opened = useRef<{ url: string; revision?: string } | null>(null);
@@ -43,5 +44,5 @@ export function PreviewFrame({ base, pages, location, revision, onNavigate, titl
     frame.current.src = src;
   }, [src, revision]);
 
-  return <iframe ref={frame} title={title} sandbox="allow-scripts allow-forms" className={className} />;
+  return <iframe ref={frame} title={title} sandbox="allow-scripts allow-forms" className={className} style={style} />;
 }

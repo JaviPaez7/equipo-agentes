@@ -42,8 +42,9 @@ flowchart LR
   - qué hace cada agente en ese momento;
   - el estado de cada tarea y los informes de cada intento;
   - la actividad, con el razonamiento resumido de cada agente;
-  - una vista previa de la web;
-  - las diferencias en cada archivo.
+  - una vista previa de la web, fija junto a las tareas, que se puede ver como en **escritorio (1280 px, reducida para caber)** o en **móvil (390 px)**;
+  - las diferencias en cada archivo;
+  - un **enlace de demo para el cliente** (`/demo/<id>`): una página limpia con la propuesta, «Antes» y «Con los cambios», en escritorio o móvil, pensada para enseñársela a quien encargó el cambio.
 
 ### Cómo verifica Testing
 
@@ -173,7 +174,7 @@ Trabajo inicial con Claude Code:
 ## Estructura
 
 ```
-app/                  Rutas: portada, login, panel de cada ejecución, API y vista previa aislada
+app/                  Rutas: portada, login, panel de cada ejecución, demo para el cliente, API y vista previa aislada
 components/           Interfaz (formulario, panel, tarjetas de agentes, tareas, actividad, archivos)
 workflows/            El workflow durable y sus pasos
 lib/agents/           Los tres agentes, sus prompts y la llamada a Claude
