@@ -146,12 +146,19 @@ export async function updateTask(taskId: string, values: Partial<typeof tasks.$i
 
 // ---------- Virtual file system ----------
 
-export async function initRunFiles(runId: string) {
+/**
+ * Seeds a run's site: the sample site, or the parent run's final site when the
+ * run iterates on another one. `originalContent` is that starting point, so the
+ * diffs and the "Antes" preview show only what this run changed.
+ */
+export async function initRunFiles(runId: string, parentRunId: string | null = null) {
   const db = getDb();
   const existing = await db.select({ path: runFiles.path }).from(runFiles).where(eq(runFiles.runId, runId));
   if (existing.length > 0) return; // idempotent: the step may be retried
+  const start = parentRunId ? await getSiteFiles(parentRunId) : SITE_TEMPLATE;
+  if (Object.keys(start).length === 0) throw new Error("La ejecución anterior no tiene archivos de los que partir.");
   await db.insert(runFiles).values(
-    Object.entries(SITE_TEMPLATE).map(([path, content]) => ({
+    Object.entries(start).map(([path, content]) => ({
       runId,
       path,
       content,
@@ -159,6 +166,43 @@ export async function initRunFiles(runId: string) {
       updatedBy: "system" as const,
     })),
   );
+}
+
+/** The site as it was when the run started (its parent's result, or the sample site). */
+export async function getBaseSiteFiles(runId: string): Promise<SiteFiles> {
+  const rows = await getDb()
+    .select({ path: runFiles.path, content: runFiles.originalContent })
+    .from(runFiles)
+    .where(eq(runFiles.runId, runId));
+  return Object.fromEntries(rows.flatMap((r) => (r.content === null ? [] : [[r.path, r.content]])));
+}
+
+export const MAX_LINEAGE = 20;
+
+/** Only finished runs whose site the agents completed can be iterated on. */
+export const ITERABLE_RUN_STATUSES: readonly RunStatus[] = ["completed", "completed_with_failures"];
+
+/**
+ * The chain of runs that led to this one, oldest first and ending with the run
+ * itself. Bounded so a corrupt cycle can never loop forever.
+ */
+export async function getRunLineage(runId: string) {
+  const result = await getDb().execute<{
+    id: string;
+    request: string;
+    status: RunStatus;
+    summary: string | null;
+  }>(sql`
+    WITH RECURSIVE chain AS (
+      SELECT id, parent_run_id, request, status, summary, 0 AS depth FROM runs WHERE id = ${runId}
+      UNION ALL
+      SELECT r.id, r.parent_run_id, r.request, r.status, r.summary, chain.depth + 1
+      FROM runs r JOIN chain ON r.id = chain.parent_run_id
+      WHERE chain.depth < ${MAX_LINEAGE}
+    )
+    SELECT id, request, status, summary FROM chain ORDER BY depth DESC
+  `);
+  return result.rows;
 }
 
 export async function getSiteFiles(runId: string): Promise<SiteFiles> {

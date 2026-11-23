@@ -151,6 +151,9 @@ async function RecentRuns() {
               <p className="line-clamp-2 font-medium text-zinc-900">{run.request}</p>
               <StatusBadge {...RUN_STATUS[run.status]} />
             </div>
+            {run.parentRequest && (
+              <p className="mt-1 line-clamp-1 text-xs text-violet-700">↳ Continúa la web de «{run.parentRequest}»</p>
+            )}
             <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
               <LocalTime value={run.createdAt.toISOString()} />
               {run.tasksTotal > 0 && (

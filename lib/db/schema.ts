@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   bigserial,
   boolean,
   index,
@@ -77,6 +78,11 @@ export const runs = pgTable(
     error: text("error"),
     model: text("model").notNull(),
     workflowRunId: text("workflow_run_id"),
+    /**
+     * Run this one iterates on: it starts from that run's final website instead
+     * of the sample site. Runs stay immutable; iterating creates a new run.
+     */
+    parentRunId: uuid("parent_run_id").references((): AnyPgColumn => runs.id, { onDelete: "set null" }),
     createdBy: uuid("created_by").references(() => users.id),
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
@@ -87,7 +93,7 @@ export const runs = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("runs_created_at_idx").on(t.createdAt)],
+  (t) => [index("runs_created_at_idx").on(t.createdAt), index("runs_parent_run_id_idx").on(t.parentRunId)],
 );
 
 export const tasks = pgTable(

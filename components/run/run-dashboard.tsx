@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { RichText } from "@/components/rich-text";
 import { StatusBadge } from "@/components/status-badge";
 import { ACTIVE_RUN_STATUSES, formatCost, formatDuration, RUN_STATUS } from "@/lib/ui/labels";
+import { NewRunForm } from "@/components/new-run-form";
 import { ActivityFeed } from "./activity-feed";
 import { AgentCards } from "./agent-cards";
 import { FileBrowser } from "./file-browser";
+import { IterationTrail } from "./iteration-trail";
 import { SitePreview } from "./site-preview";
 import { TaskList } from "./task-list";
 import { useRunState } from "./use-run-state";
@@ -38,7 +40,7 @@ export function RunDashboard({ runId }: { runId: string }) {
     );
   }
 
-  const { run, agents, tasks, files, canCancel } = state;
+  const { run, agents, tasks, files, canCancel, canIterate, iterable, lineage, children } = state;
   const active = ACTIVE_RUN_STATUSES.includes(run.status);
   const start = run.startedAt ?? run.createdAt;
   const end = run.finishedAt ? new Date(run.finishedAt).getTime() : now;
@@ -57,6 +59,7 @@ export function RunDashboard({ runId }: { runId: string }) {
       </Link>
 
       <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200 sm:p-6">
+        <IterationTrail runId={runId} lineage={lineage} next={children} />
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Petición</p>
@@ -106,6 +109,25 @@ export function RunDashboard({ runId }: { runId: string }) {
         )}
         {error && <p className="mt-3 text-sm text-amber-700">{error}</p>}
       </section>
+
+      {iterable && (
+        <section aria-labelledby="iterate-title">
+          <h2 id="iterate-title" className="text-lg font-semibold text-zinc-900">
+            Seguir iterando sobre esta web
+          </h2>
+          {canIterate ? (
+            <NewRunForm parentRunId={runId} />
+          ) : (
+            <p className="mt-3 rounded-xl bg-white p-5 text-sm text-zinc-700 shadow-sm ring-1 ring-zinc-200">
+              Puedes pedir otro cambio y el equipo partirá de la web tal como ha quedado aquí.{" "}
+              <Link href={`/login?next=/runs/${runId}`} className="font-medium text-violet-700 hover:underline">
+                Inicia sesión
+              </Link>{" "}
+              para lanzarlo.
+            </p>
+          )}
+        </section>
+      )}
 
       <AgentCards agents={agents} tasks={tasks} />
 

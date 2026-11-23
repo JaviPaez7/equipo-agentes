@@ -38,7 +38,17 @@ export function useRunState(runId: string) {
         return fresh.length === 0 ? prev : [...prev, ...fresh];
       });
     }
-    setState({ run: data.run, agents: data.agents, tasks: data.tasks, files: data.files, canCancel: data.canCancel });
+    setState({
+      run: data.run,
+      agents: data.agents,
+      tasks: data.tasks,
+      files: data.files,
+      lineage: data.lineage,
+      children: data.children,
+      canCancel: data.canCancel,
+      iterable: data.iterable,
+      canIterate: data.canIterate,
+    });
     setError(null);
     return ACTIVE_RUN_STATUSES.includes(data.run.status);
   }, [runId]);

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { FileJson } from "@/lib/ui/types";
+import { previewBase } from "@/lib/site/preview-policy";
 import { PreviewFrame, type PreviewLocation } from "./preview-frame";
 
 /**
@@ -30,15 +31,15 @@ export function SitePreview({
   }, [files]);
 
   const [picked, setPicked] = useState<PreviewLocation | null>(null);
-  const [version, setVersion] = useState<"run" | "original">("run");
+  const [version, setVersion] = useState<"run" | "before">("run");
   const wanted = picked?.page ?? focus?.path ?? "index.html";
   const current = pages.includes(wanted) ? wanted : "index.html";
-  // A page the agents created does not exist in the original site.
+  // A page this run created does not exist in the version it started from.
   const isNewPage = files.some((f) => f.path === current && f.change === "new");
-  const shown = version === "original" && isNewPage ? "index.html" : current;
+  const shown = version === "before" && isNewPage ? "index.html" : current;
 
   const contentKey = useMemo(() => files.map((f) => `${f.path}:${f.updatedAt}`).join("|"), [files]);
-  const base = version === "run" ? `/preview/${runId}` : "/preview/original";
+  const base = previewBase(runId, version);
   const location = { page: shown, suffix: picked?.page === shown ? picked.suffix : "" };
   const src = `${base}/${shown}${location.suffix}`;
   const visiblePages = version === "run" ? pages : files.filter((f) => f.change !== "new" && f.path.endsWith(".html")).map((f) => f.path);
@@ -61,7 +62,7 @@ export function SitePreview({
           </select>
         </label>
         <div className="flex rounded-md bg-zinc-100 p-0.5 text-xs" role="group" aria-label="Versión">
-          {(["run", "original"] as const).map((v) => (
+          {(["run", "before"] as const).map((v) => (
             <button
               key={v}
               type="button"
@@ -69,15 +70,15 @@ export function SitePreview({
               aria-pressed={version === v}
               className={`rounded px-2 py-1 font-medium ${version === v ? "bg-white shadow-sm" : "text-zinc-600"}`}
             >
-              {v === "run" ? "Con los cambios" : "Original"}
+              {v === "run" ? "Con los cambios" : "Antes"}
             </button>
           ))}
         </div>
         {picked === null && focus && version === "run" && (
           <span className="text-xs text-zinc-500">{focus.change === "new" ? "Página nueva" : "Última página modificada"}</span>
         )}
-        {version === "original" && isNewPage && (
-          <span className="text-xs text-zinc-500">{current} es nueva: en el original se muestra la portada</span>
+        {version === "before" && isNewPage && (
+          <span className="text-xs text-zinc-500">{current} es nueva: antes no existía y se muestra la portada</span>
         )}
         <a href={src} target="_blank" rel="noreferrer" className="ml-auto text-xs font-medium text-violet-700 hover:underline">
           Abrir en una pestaña ↗

@@ -17,7 +17,7 @@ import { agentModel } from "./claude";
 export async function startRun(runId: string): Promise<{ ok: boolean }> {
   const run = await getRun(runId);
   if (!run || isTerminal(run.status)) return { ok: false };
-  await initRunFiles(runId);
+  await initRunFiles(runId, run.parentRunId);
   await initRunAgents(runId);
   if (!run.startedAt) {
     if (!(await setRunStatus(runId, "planning", { startedAt: new Date() }))) return { ok: false };

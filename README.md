@@ -35,7 +35,8 @@ flowchart LR
 ```
 
 - **Ejecución durable con [Vercel Workflows](https://vercel.com/docs/workflow).** Cada turno de cada agente (una llamada a Claude más las herramientas que pida) es un paso del workflow. Así una ejecución de varios minutos no choca con el límite de 300 s de las funciones del plan gratuito, y un error transitorio de la API se reintenta solo, sin repetir los pasos ya hechos.
-- **Todo el estado vive en la base de datos:** ejecuciones, tareas, informes de Testing, estado de cada agente, un registro de eventos, las conversaciones de cada agente y un sistema de archivos virtual con la web de cada ejecución. Cada ejecución parte de una copia limpia de la web de ejemplo.
+- **Todo el estado vive en la base de datos:** ejecuciones, tareas, informes de Testing, estado de cada agente, un registro de eventos, las conversaciones de cada agente y un sistema de archivos virtual con la web de cada ejecución. Una ejecución nueva parte de una copia limpia de la web de ejemplo.
+- **Iteraciones encadenadas.** Desde una ejecución terminada se puede **seguir iterando sobre esa web**: la petición nueva crea otra ejecución que parte de la web tal como quedó (columna `parent_run_id`). Cada iteración tiene su propio plan, sus tareas, sus pruebas y su coste, y la anterior no cambia nunca, así que se puede ramificar desde cualquier punto. El Orquestador recibe el historial de peticiones y resúmenes anteriores, el panel muestra el hilo de iteraciones, y la vista previa compara «Con los cambios» con «Antes» (el punto de partida de esa iteración).
 - **Conversaciones solo de añadir.** El historial de cada agente nunca se reescribe, así que el razonamiento previo y la caché de prompts siguen siendo válidos entre turnos.
 - **El panel** consulta el estado cada 1,5 s y recibe solo los eventos nuevos. Muestra:
   - qué hace cada agente en ese momento;

@@ -7,11 +7,11 @@
  * forms cannot submit anywhere.
  */
 import { inlineAssets } from "@/lib/site/inline";
-import { PREVIEW_CSP as CSP } from "@/lib/site/preview-policy";
+import { BEFORE_PREFIX, PREVIEW_CSP as CSP } from "@/lib/site/preview-policy";
 import { contentTypeFor, InvalidPathError, normalizePath } from "@/lib/site/paths";
 import { SITE_TEMPLATE } from "@/lib/site/template";
 import { isUuid } from "@/lib/runs/queries";
-import { getSiteFiles } from "@/lib/runs/repo";
+import { getBaseSiteFiles, getSiteFiles } from "@/lib/runs/repo";
 
 function notFound(message: string) {
   return new Response(
@@ -34,6 +34,9 @@ export async function GET(_request: Request, ctx: RouteContext<"/preview/[runId]
     files = { ...SITE_TEMPLATE };
   } else if (isUuid(runId)) {
     files = await getSiteFiles(runId);
+  } else if (runId.startsWith(BEFORE_PREFIX) && isUuid(runId.slice(BEFORE_PREFIX.length))) {
+    // The site as it was when the run started: its parent's result, or the sample site.
+    files = await getBaseSiteFiles(runId.slice(BEFORE_PREFIX.length));
   }
   let content = files?.[path];
   if (!files || content === undefined) return notFound(`La página ${path} no existe en esta versión de la web.`);

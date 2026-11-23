@@ -15,7 +15,7 @@ const limitMessages = {
 };
 
 export async function reserveRun(
-  userId: string, request: string, model: string,
+  userId: string, request: string, model: string, parentRunId: string | null = null,
 ): Promise<{ id: string } | { error: string }> {
   const db = getDb();
   // Separate statements in a READ COMMITTED transaction: after waiting for the lock,
@@ -34,8 +34,8 @@ export async function reserveRun(
         END AS reason
         FROM runs WHERE created_at >= now() - interval '24 hours'
       ), reserved AS (
-        INSERT INTO runs (created_by, request, model)
-        SELECT ${userId}, ${request}, ${model} FROM quota WHERE reason IS NULL
+        INSERT INTO runs (created_by, request, model, parent_run_id)
+        SELECT ${userId}, ${request}, ${model}, ${parentRunId}::uuid FROM quota WHERE reason IS NULL
         RETURNING id
       )
       SELECT (SELECT id FROM reserved) AS id, reason FROM quota

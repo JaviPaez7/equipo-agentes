@@ -8,11 +8,20 @@ import { getDb } from "@/lib/db";
 import { runs } from "@/lib/db/schema";
 import { reserveRun, MAX_REQUEST_LENGTH } from "@/lib/runs/limits";
 import { listRuns } from "@/lib/runs/queries";
-import { initRunAgents, setRunStatus } from "@/lib/runs/repo";
+import {
+  getRun,
+  getRunLineage,
+  initRunAgents,
+  ITERABLE_RUN_STATUSES,
+  MAX_LINEAGE,
+  setRunStatus,
+} from "@/lib/runs/repo";
 import { agentTeamWorkflow } from "@/workflows/agent-team";
 
 const Body = z.object({
   request: z.string().trim().min(8, "Describe un poco más lo que quieres.").max(MAX_REQUEST_LENGTH),
+  /** Iterate on this finished run's website instead of starting from the sample site. */
+  parentRunId: z.string().uuid("La ejecución de la que quieres partir no es válida.").optional(),
 });
 
 export async function GET() {
@@ -29,7 +38,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Petición no válida." }, { status: 400 });
   }
 
-  const run = await reserveRun(session.userId, parsed.data.request, agentModel());
+  const { parentRunId = null } = parsed.data;
+  if (parentRunId) {
+    const parent = await getRun(parentRunId);
+    if (!parent) return NextResponse.json({ error: "La ejecución de la que quieres partir no existe." }, { status: 404 });
+    if (!ITERABLE_RUN_STATUSES.includes(parent.status)) {
+      return NextResponse.json({ error: "Solo se puede seguir iterando sobre una ejecución completada." }, { status: 409 });
+    }
+    if ((await getRunLineage(parentRunId)).length >= MAX_LINEAGE) {
+      return NextResponse.json({ error: `Una web admite como mucho ${MAX_LINEAGE} iteraciones seguidas.` }, { status: 409 });
+    }
+  }
+
+  const run = await reserveRun(session.userId, parsed.data.request, agentModel(), parentRunId);
   if ("error" in run) return NextResponse.json({ error: run.error }, { status: 429 });
   const db = getDb();
   let workflowRun;

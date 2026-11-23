@@ -10,3 +10,10 @@ export const PREVIEW_CSP = [
   "base-uri 'none'",
   "frame-ancestors 'self'",
 ].join("; ");
+
+/** Preview path prefix for the site as it was when a run started ("Antes"). */
+export const BEFORE_PREFIX = "antes-";
+
+export function previewBase(runId: string, version: "run" | "before"): string {
+  return version === "run" ? `/preview/${runId}` : `/preview/${BEFORE_PREFIX}${runId}`;
+}

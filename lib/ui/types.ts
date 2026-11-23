@@ -14,6 +14,8 @@ export type AgentJson = Jsonify<RunState["agents"][number]>;
 export type TaskJson = Jsonify<RunState["tasks"][number]>;
 export type EventJson = Jsonify<RunState["events"][number]>;
 export type FileJson = Jsonify<RunState["files"][number]>;
+export type LineageJson = Jsonify<RunState["lineage"][number]>;
+export type ChildRunJson = Jsonify<RunState["children"][number]>;
 
 export interface RunStateJson {
   run: RunJson;
@@ -21,5 +23,11 @@ export interface RunStateJson {
   tasks: TaskJson[];
   events: EventJson[];
   files: FileJson[];
+  lineage: LineageJson[];
+  children: ChildRunJson[];
   canCancel: boolean;
+  /** Finished with a usable site, so a new run can build on it. */
+  iterable: boolean;
+  /** iterable, and the viewer is signed in. */
+  canIterate: boolean;
 }

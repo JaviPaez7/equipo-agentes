@@ -6,6 +6,7 @@ import { testReports } from "@/lib/db/schema";
 import {
   addUsage,
   getRun,
+  getRunLineage,
   getSiteFiles,
   getTasks,
   isTerminal,
@@ -62,6 +63,23 @@ const PLAN_JSON_SCHEMA = {
 
 const stoppedPlan = { taskIds: [] as string[], rejected: false, cancelled: true };
 
+/**
+ * Earlier iterations, so the Orchestrator knows the site already carries those
+ * changes and plans only the new request. The current files remain the source
+ * of truth; the summaries only explain how the site got there.
+ */
+export function iterationHistory(previous: { request: string; summary: string | null }[]): string {
+  if (previous.length === 0) return "";
+  const lines = previous.map(
+    (step, i) => `${i + 1}. """${step.request}"""\n   Resultado: ${(step.summary ?? "sin resumen").slice(0, 600)}`,
+  );
+  return (
+    "Esta petición continúa una web que ya se ha modificado en iteraciones anteriores, de la más antigua a la más reciente:\n\n" +
+    `${lines.join("\n")}\n\n` +
+    "Esos cambios ya están en el contenido actual de la web. Planifica solo lo que pide la petición nueva y no deshagas lo anterior salvo que la petición lo pida.\n\n"
+  );
+}
+
 export async function planTasks(runId: string): Promise<{ taskIds: string[]; rejected: boolean; cancelled?: boolean }> {
   const run = await getRun(runId);
   if (!run) throw new Error(`Ejecución ${runId} no encontrada`);
@@ -77,6 +95,7 @@ export async function planTasks(runId: string): Promise<{ taskIds: string[]; rej
   });
 
   const files = await getSiteFiles(runId);
+  const history = run.parentRunId ? iterationHistory((await getRunLineage(runId)).slice(0, -1)) : "";
   const response = await callClaude({
     agent: "orchestrator",
     system: ORCHESTRATOR_SYSTEM,
@@ -85,7 +104,7 @@ export async function planTasks(runId: string): Promise<{ taskIds: string[]; rej
     messages: [
       {
         role: "user",
-        content: `Petición del usuario:\n"""${run.request}"""\n\nContenido actual de la web:\n\n${dumpSite(files)}`,
+        content: `${history}Petición del usuario:\n"""${run.request}"""\n\nContenido actual de la web:\n\n${dumpSite(files)}`,
       },
     ],
   });
